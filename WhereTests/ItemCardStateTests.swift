@@ -71,4 +71,13 @@ struct ItemCardStateTests {
         #expect(ItemCardState.metadataPlacement(hasCardSpace: true) == .card)
         #expect(ItemCardState.metadataPlacement(hasCardSpace: false) == .fullNoteFooter)
     }
+
+    @Test func onlyActiveFaceAcceptsInputAndVoiceOver() {
+        let front = ItemCardState.faceActivation(face: .front, activeSide: .front)
+        let hiddenBack = ItemCardState.faceActivation(face: .back, activeSide: .front)
+        #expect(front.allowsHitTesting)
+        #expect(!front.accessibilityHidden)
+        #expect(!hiddenBack.allowsHitTesting)
+        #expect(hiddenBack.accessibilityHidden)
+    }
 }

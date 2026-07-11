@@ -4,6 +4,10 @@ enum ItemCardSide: Equatable { case front, back }
 enum ItemCardTransition: Equatable { case threeDFlip, opacity }
 enum ItemCardAction: Equatable { case flipCard, fullNote }
 enum ItemCardMetadataPlacement: Equatable { case card, fullNoteFooter }
+struct ItemCardFaceActivation: Equatable {
+    let allowsHitTesting: Bool
+    let accessibilityHidden: Bool
+}
 
 struct ItemCardLayoutIdentity: Equatable {
     let itemID: UUID
@@ -28,6 +32,10 @@ struct ItemCardState: Equatable {
     mutating func dismissFullNote() { isShowingFullNote = false }
     static func transition(reduceMotion: Bool) -> ItemCardTransition { reduceMotion ? .opacity : .threeDFlip }
     static func metadataPlacement(hasCardSpace: Bool) -> ItemCardMetadataPlacement { hasCardSpace ? .card : .fullNoteFooter }
+    static func faceActivation(face: ItemCardSide, activeSide: ItemCardSide) -> ItemCardFaceActivation {
+        let isActive = face == activeSide
+        return ItemCardFaceActivation(allowsHitTesting: isActive, accessibilityHidden: !isActive)
+    }
 
     static func createdAtText(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter(); formatter.locale = locale; formatter.timeZone = timeZone
@@ -52,10 +60,15 @@ struct ItemCardView: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                front.opacity(state.side == .front ? 1 : 0)
+                front
+                    .opacity(state.side == .front ? 1 : 0)
+                    .allowsHitTesting(state.side == .front)
+                    .accessibilityHidden(state.side != .front)
                 back(size: proxy.size)
                     .rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (0, 1, 0))
                     .opacity(state.side == .back ? 1 : 0)
+                    .allowsHitTesting(state.side == .back)
+                    .accessibilityHidden(state.side != .back)
             }
             .rotation3DEffect(.degrees(!reduceMotion && state.side == .back ? 180 : 0), axis: (0, 1, 0))
             .animation(reduceMotion ? .easeInOut(duration: 0.18) : .spring(duration: 0.45), value: state.side)
