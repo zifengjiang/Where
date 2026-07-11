@@ -44,6 +44,7 @@ struct ScenePhotoView: View {
     let image: UIImage
     let pins: [ScenePin]
     let selectedItemID: UUID?
+    let imageAccessibilityLabel: String
     var onImageTap: ((CGPoint) -> Void)?
     var onPinTap: ((UUID) -> Void)?
 
@@ -56,7 +57,7 @@ struct ScenePhotoView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: proxy.size.width, height: proxy.size.height)
-                    .accessibilityHidden(true)
+                    .accessibilityLabel(imageAccessibilityLabel)
 
                 ForEach(pins) { pin in
                     Button { onPinTap?(pin.id) } label: { marker(for: pin, selected: pin.id == selectedItemID) }
@@ -115,7 +116,8 @@ struct ScenePhotoView: View {
     ScenePhotoView(
         image: ScenePhotoPreviewFixture.image,
         pins: ScenePhotoPreviewFixture.pins,
-        selectedItemID: ScenePhotoPreviewFixture.pins.first?.id
+        selectedItemID: ScenePhotoPreviewFixture.pins.first?.id,
+        imageAccessibilityLabel: "Room scene photo"
     )
     .frame(width: 393, height: 852)
     .background(.black)
@@ -125,7 +127,8 @@ struct ScenePhotoView: View {
     ScenePhotoView(
         image: ScenePhotoPreviewFixture.image,
         pins: ScenePhotoPreviewFixture.pins,
-        selectedItemID: ScenePhotoPreviewFixture.pins.last?.id
+        selectedItemID: ScenePhotoPreviewFixture.pins.last?.id,
+        imageAccessibilityLabel: "Room scene photo"
     )
     .frame(width: 852, height: 393)
     .background(.black)

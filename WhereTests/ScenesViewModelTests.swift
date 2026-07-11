@@ -60,10 +60,25 @@ struct ScenesViewModelTests {
         let repository = FakeSceneRepository(events: [], deleteError: TestError.failed)
         let images = FakeSceneImageStore()
         let model = ScenesViewModel(repository: repository, imageStore: images)
-        model.requestDelete(fixtureScene())
+        let scene = fixtureScene()
+        model.requestDelete(scene)
         await model.confirmDelete()
         #expect(images.deleteCount == 0)
         #expect(model.deleteErrorMessage != nil)
+        #expect(model.failedDeletionScene?.id == scene.id)
+    }
+
+    @Test func listDeleteFailureCanRetryTheStoredTarget() async {
+        let repository = FakeSceneRepository(events: [], deleteError: TestError.failed)
+        let model = ScenesViewModel(repository: repository, imageStore: FakeSceneImageStore())
+        let scene = fixtureScene()
+        model.requestDelete(scene)
+        await model.confirmDelete()
+        repository.deleteError = nil
+        await model.retryDelete()
+        #expect(repository.deleteCount == 2)
+        #expect(model.failedDeletionScene == nil)
+        #expect(model.deleteErrorMessage == nil)
     }
 
     @Test func cleanupFailureIsRecoverableAfterDatabaseDelete() async {
@@ -93,6 +108,27 @@ struct ScenesViewModelTests {
         #expect(model.selectedItemID == item.id)
         model.requestEdit(); model.requestAddItem()
         #expect(model.isPresentingEdit && model.isPresentingAddItem)
+    }
+
+    @Test func detailDatabaseDeleteFailureStaysOnScreen() async {
+        let scene = fixtureScene()
+        let repository = FakeSceneRepository(events: [], detail: SceneDetail(scene: scene, items: []), deleteError: TestError.failed)
+        let model = SceneDetailViewModel(sceneID: scene.id, repository: repository, imageStore: FakeSceneImageStore())
+        #expect(await model.deleteScene() == .failed)
+        #expect(model.deleteErrorMessage != nil)
+    }
+
+    @Test func detailCleanupFailureDoesNotDismissAndRetryNeverDeletesDatabaseTwice() async {
+        let scene = fixtureScene()
+        let repository = FakeSceneRepository(events: [], detail: SceneDetail(scene: scene, items: []))
+        let images = FakeSceneImageStore(error: TestError.failed)
+        let model = SceneDetailViewModel(sceneID: scene.id, repository: repository, imageStore: images)
+        #expect(await model.deleteScene() == .cleanupPending)
+        #expect(repository.deleteCount == 1)
+        images.error = nil
+        #expect(await model.retryDeleteCleanup() == true)
+        #expect(repository.deleteCount == 1)
+        #expect(images.deleteCount == 2)
     }
 }
 

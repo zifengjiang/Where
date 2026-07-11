@@ -12,6 +12,7 @@ final class ScenesViewModel {
     var state: LoadState = .loading
     var selectedSceneID: UUID?
     var scenePendingDeletion: SceneSummary?
+    var failedDeletionScene: SceneSummary?
     var deleteErrorMessage: String?
     var cleanupWarning: String?
 
@@ -26,16 +27,26 @@ final class ScenesViewModel {
     }
     func retry() { start() }
     func select(_ scene: SceneSummary) { selectedSceneID = scene.id }
-    func requestDelete(_ scene: SceneSummary) { scenePendingDeletion = scene; deleteErrorMessage = nil }
+    func requestDelete(_ scene: SceneSummary) { scenePendingDeletion = scene; failedDeletionScene = nil; deleteErrorMessage = nil }
     func cancelDelete() { scenePendingDeletion = nil }
     func confirmDelete() async {
         guard let scene = scenePendingDeletion else { return }
+        scenePendingDeletion = nil
+        await delete(scene)
+    }
+    func retryDelete() async {
+        guard let scene = failedDeletionScene else { return }
+        deleteErrorMessage = nil
+        await delete(scene)
+    }
+    func cancelFailedDelete() { failedDeletionScene = nil; deleteErrorMessage = nil }
+    private func delete(_ scene: SceneSummary) async {
         do {
             let deleted = try await repository.deleteScene(id: scene.id)
-            scenePendingDeletion = nil
+            failedDeletionScene = nil
             pendingCleanupPaths = [deleted.scene] + deleted.items.flatMap { [$0.original, $0.cutout].compactMap { $0 } }
             await retryCleanup()
-        } catch { deleteErrorMessage = "无法删除场景，请重试。" }
+        } catch { failedDeletionScene = scene; deleteErrorMessage = "无法删除场景，请重试。" }
     }
     func retryCleanup() async {
         guard !pendingCleanupPaths.isEmpty else { return }

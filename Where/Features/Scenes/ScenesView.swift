@@ -27,6 +27,10 @@ struct ScenesView: View {
         .alert("图片清理未完成", isPresented: Binding(get: { model.cleanupWarning != nil }, set: { if !$0 { model.cleanupWarning = nil } })) {
             Button("重试") { Task { await model.retryCleanup() } }; Button("稍后", role: .cancel) {}
         } message: { Text(model.cleanupWarning ?? "") }
+        .alert("无法删除场景", isPresented: Binding(get: { model.deleteErrorMessage != nil }, set: { if !$0 { model.cancelFailedDelete() } })) {
+            Button("取消", role: .cancel) { model.cancelFailedDelete() }
+            Button("重试") { Task { await model.retryDelete() } }
+        } message: { Text(model.deleteErrorMessage ?? "") }
     }
     private var sceneGrid: some View {
         ScrollView { LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], spacing: 16) {
@@ -43,7 +47,7 @@ private struct SceneCard: View {
     let scene: SceneSummary; let imageStore: any SceneImageStoreProtocol
     @State private var image: UIImage?
     var body: some View { VStack(alignment: .leading, spacing: 10) {
-        Group { if let image { Image(uiImage: image).resizable().scaledToFill() } else { ZStack { Color.orange.opacity(0.12); Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) } } }
+        Group { if let image { Image(uiImage: image).resizable().scaledToFill().accessibilityLabel("\(scene.name)的场景照片") } else { ZStack { Color.orange.opacity(0.12); Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) }.accessibilityLabel("\(scene.name)的场景照片不可用") } }
             .frame(height: 130).clipShape(RoundedRectangle(cornerRadius: 18))
         Text(scene.name).font(.headline).lineLimit(1)
         Text("\(scene.itemCount) 件物品").font(.subheadline).foregroundStyle(.secondary)

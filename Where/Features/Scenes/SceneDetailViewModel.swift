@@ -3,6 +3,7 @@ import Observation
 
 @MainActor @Observable
 final class SceneDetailViewModel {
+    enum DeleteOutcome: Equatable { case deleted, cleanupPending, failed }
     let sceneID: UUID
     private let repository: any SceneRepositoryProtocol
     let imageStore: any SceneImageStoreProtocol
@@ -15,6 +16,7 @@ final class SceneDetailViewModel {
     var isPresentingAddItem = false
     var deleteErrorMessage: String?
     var cleanupWarning: String?
+    private var pendingCleanupPaths: [String] = []
     init(sceneID: UUID, repository: any SceneRepositoryProtocol, imageStore: any SceneImageStoreProtocol) { self.sceneID = sceneID; self.repository = repository; self.imageStore = imageStore }
     var pins: [ScenePin] { items.map { ScenePin(id: $0.id, name: $0.name, locationNote: $0.locationNote, normalizedPoint: .init(x: $0.normalizedX, y: $0.normalizedY)) } }
     func start() { Task { await load() } }
@@ -22,16 +24,20 @@ final class SceneDetailViewModel {
     func selectPin(_ id: UUID) { selectedItemID = id }
     func requestEdit() { isPresentingEdit = true }
     func requestAddItem() { isPresentingAddItem = true }
-    func deleteScene() async -> Bool {
+    func deleteScene() async -> DeleteOutcome {
+        deleteErrorMessage = nil
         do {
             let deleted = try await repository.deleteScene(id: sceneID)
-            let paths = [deleted.scene] + deleted.items.flatMap { [$0.original, $0.cutout].compactMap { $0 } }
-            do { try await imageStore.delete(relativePaths: paths) }
-            catch { cleanupWarning = "场景已删除，但部分图片未能清理。" }
-            return true
+            pendingCleanupPaths = [deleted.scene] + deleted.items.flatMap { [$0.original, $0.cutout].compactMap { $0 } }
+            if await retryDeleteCleanup() { return .deleted }
+            return .cleanupPending
         } catch {
             deleteErrorMessage = "无法删除场景，请重试。"
-            return false
+            return .failed
         }
+    }
+    func retryDeleteCleanup() async -> Bool {
+        do { try await imageStore.delete(relativePaths: pendingCleanupPaths); pendingCleanupPaths = []; cleanupWarning = nil; return true }
+        catch { cleanupWarning = "场景已删除，但部分图片未能清理。你可以重试。"; return false }
     }
 }
