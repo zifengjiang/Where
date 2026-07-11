@@ -25,6 +25,7 @@
 		F50000000000000000000001 /* AspectFitGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F50000000000000000000002 /* AspectFitGeometryTests.swift */; };
 		F50000000000000000000003 /* AspectFitGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F50000000000000000000004 /* AspectFitGeometry.swift */; };
 		F50000000000000000000005 /* ScenePhotoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F50000000000000000000006 /* ScenePhotoView.swift */; };
+		F50000000000000000000009 /* ScenePinLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5000000000000000000000A /* ScenePinLayoutTests.swift */; };
 		DC5027EF176DD66736A9EF92 /* WhereApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC4EBD322FBB03D38C9AD61 /* WhereApp.swift */; };
 		EDE74D7C3554310FB2F6BAEB /* ItemRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F679DDD7730C7D67DDC1E17 /* ItemRepositoryTests.swift */; };
 /* End PBXBuildFile section */
@@ -68,6 +69,7 @@
 		F50000000000000000000002 /* AspectFitGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AspectFitGeometryTests.swift; sourceTree = "<group>"; };
 		F50000000000000000000004 /* AspectFitGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AspectFitGeometry.swift; sourceTree = "<group>"; };
 		F50000000000000000000006 /* ScenePhotoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenePhotoView.swift; sourceTree = "<group>"; };
+		F5000000000000000000000A /* ScenePinLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenePinLayoutTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -180,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				F50000000000000000000002 /* AspectFitGeometryTests.swift */,
+				F5000000000000000000000A /* ScenePinLayoutTests.swift */,
 				A10000000000000000000002 /* ImageStoreTests.swift */,
 				D34D45CB33A0CE15F0E1CF43 /* AppDatabaseTests.swift */,
 				5F679DDD7730C7D67DDC1E17 /* ItemRepositoryTests.swift */,
@@ -301,6 +304,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F50000000000000000000001 /* AspectFitGeometryTests.swift in Sources */,
+				F50000000000000000000009 /* ScenePinLayoutTests.swift in Sources */,
 				A10000000000000000000001 /* ImageStoreTests.swift in Sources */,
 				CE6B5309F838700228CCB7E1 /* AppDatabaseTests.swift in Sources */,
 				EDE74D7C3554310FB2F6BAEB /* ItemRepositoryTests.swift in Sources */,

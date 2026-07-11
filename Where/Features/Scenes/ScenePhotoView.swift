@@ -1,6 +1,31 @@
 import SwiftUI
 import UIKit
 
+struct ScenePinLayout: Equatable {
+    static let anchorSize = CGSize(width: 44, height: 44)
+    static let labelSpacing: CGFloat = 4
+
+    let anchorCenter: CGPoint
+
+    var anchorFrame: CGRect {
+        CGRect(
+            x: anchorCenter.x - Self.anchorSize.width / 2,
+            y: anchorCenter.y - Self.anchorSize.height / 2,
+            width: Self.anchorSize.width,
+            height: Self.anchorSize.height
+        )
+    }
+
+    func labelFrame(for labelSize: CGSize) -> CGRect {
+        CGRect(
+            x: anchorCenter.x - labelSize.width / 2,
+            y: anchorFrame.maxY + Self.labelSpacing,
+            width: labelSize.width,
+            height: labelSize.height
+        )
+    }
+}
+
 struct ScenePin: Identifiable, Sendable, Equatable {
     let id: UUID
     let name: String
@@ -47,16 +72,16 @@ struct ScenePhotoView: View {
     }
 
     private func marker(for pin: ScenePin, selected: Bool) -> some View {
-        VStack(spacing: 4) {
-            ZStack {
-                Circle()
-                    .fill(.tint)
-                    .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
-                Circle()
-                    .stroke(selected ? Color.white : Color.black.opacity(0.65), lineWidth: selected ? 3 : 2)
-                    .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
-            }
-
+        ZStack {
+            Circle()
+                .fill(.tint)
+                .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
+            Circle()
+                .stroke(selected ? Color.white : Color.black.opacity(0.65), lineWidth: selected ? 3 : 2)
+                .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
+        }
+        .frame(width: ScenePinLayout.anchorSize.width, height: ScenePinLayout.anchorSize.height)
+        .overlay(alignment: .top) {
             if selected {
                 Text(pin.name)
                     .font(.caption.weight(.semibold))
@@ -65,9 +90,9 @@ struct ScenePhotoView: View {
                     .padding(.vertical, 4)
                     .background(.regularMaterial, in: Capsule())
                     .fixedSize()
+                    .offset(y: ScenePinLayout.anchorSize.height + ScenePinLayout.labelSpacing)
             }
         }
-        .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pin.name)
