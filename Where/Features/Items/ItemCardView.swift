@@ -188,15 +188,22 @@ struct ItemCardView: View {
     }
 }
 
-private extension ContentSizeCategory {
+extension ContentSizeCategory {
     var uiKit: UIContentSizeCategory {
         switch self {
+        case .extraSmall: .extraSmall
+        case .small: .small
+        case .medium: .medium
+        case .large: .large
+        case .extraLarge: .extraLarge
+        case .extraExtraLarge: .extraExtraLarge
+        case .extraExtraExtraLarge: .extraExtraExtraLarge
         case .accessibilityMedium: .accessibilityMedium
         case .accessibilityLarge: .accessibilityLarge
         case .accessibilityExtraLarge: .accessibilityExtraLarge
         case .accessibilityExtraExtraLarge: .accessibilityExtraExtraLarge
         case .accessibilityExtraExtraExtraLarge: .accessibilityExtraExtraExtraLarge
-        default: .large
+        @unknown default: .large
         }
     }
 }

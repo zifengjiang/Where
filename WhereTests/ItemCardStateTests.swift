@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import Testing
 import UIKit
+import SwiftUI
 @testable import Where
 
 struct ItemCardStateTests {
@@ -107,6 +108,22 @@ struct ItemCardStateTests {
         async let b = cache.result(for: second) { counter.increment(); return Self.stubResult(width: 30) }
         _ = await (a, b)
         #expect(counter.value == 2)
+    }
+
+    @Test func mapsEveryDynamicTypeSizeAndChangesCacheIdentity() {
+        let cases: [(ContentSizeCategory, UIContentSizeCategory)] = [
+            (.extraSmall, .extraSmall), (.small, .small), (.medium, .medium), (.large, .large),
+            (.extraLarge, .extraLarge), (.extraExtraLarge, .extraExtraLarge), (.extraExtraExtraLarge, .extraExtraExtraLarge),
+            (.accessibilityMedium, .accessibilityMedium), (.accessibilityLarge, .accessibilityLarge),
+            (.accessibilityExtraLarge, .accessibilityExtraLarge), (.accessibilityExtraExtraLarge, .accessibilityExtraExtraLarge),
+            (.accessibilityExtraExtraExtraLarge, .accessibilityExtraExtraExtraLarge),
+        ]
+        for (swiftUI, uiKit) in cases { #expect(swiftUI.uiKit == uiKit) }
+
+        let id = UUID(), size = CGSize(width: 200, height: 200)
+        let small = ItemCardLayoutIdentity(itemID: id, note: "note", size: size, sizeCategory: ContentSizeCategory.small.uiKit)
+        let medium = ItemCardLayoutIdentity(itemID: id, note: "note", size: size, sizeCategory: ContentSizeCategory.medium.uiKit)
+        #expect(small != medium)
     }
 
     private static func stubResult(width: CGFloat) -> SilhouetteTextLayoutResult {
