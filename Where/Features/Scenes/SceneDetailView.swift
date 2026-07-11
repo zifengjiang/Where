@@ -34,6 +34,6 @@ struct SceneDetailView: View {
     @ViewBuilder private var detail: some View {
         if let image { ScenePhotoView(image: image, pins: model.pins, selectedItemID: model.selectedItemID, imageAccessibilityLabel: "\(model.scene?.name ?? "场景")的场景照片", onPinTap: model.selectPin).background(.black) }
         else { ContentUnavailableView("照片不可用", systemImage: "photo.badge.exclamationmark", description: Text(model.scene?.name ?? "场景信息仍可查看。"))
-            .task(id: model.scene?.imagePath) { if let path = model.scene?.imagePath, let data = await model.imageStore.loadImage(relativePath: path) { image = UIImage(data: data) } } }
+            .task(id: model.scene?.imagePath) { if let path = model.scene?.imagePath, let asset = await model.imageStore.loadImageAsset(relativePath: path) { image = await SceneThumbnailCache.shared.thumbnail(path: path, asset: asset)?.image } } }
     }
 }

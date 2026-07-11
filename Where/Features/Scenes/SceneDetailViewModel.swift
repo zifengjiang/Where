@@ -16,7 +16,6 @@ final class SceneDetailViewModel {
     var isPresentingAddItem = false
     var deleteErrorMessage: String?
     var cleanupWarning: String?
-    private var pendingCleanupPaths: [String] = []
     init(sceneID: UUID, repository: any SceneRepositoryProtocol, imageStore: any SceneImageStoreProtocol) { self.sceneID = sceneID; self.repository = repository; self.imageStore = imageStore }
     var pins: [ScenePin] { items.map { ScenePin(id: $0.id, name: $0.name, locationNote: $0.locationNote, normalizedPoint: .init(x: $0.normalizedX, y: $0.normalizedY)) } }
     func start() { Task { await load() } }
@@ -28,7 +27,9 @@ final class SceneDetailViewModel {
         deleteErrorMessage = nil
         do {
             let deleted = try await repository.deleteScene(id: sceneID)
-            pendingCleanupPaths = [deleted.scene] + deleted.items.flatMap { [$0.original, $0.cutout].compactMap { $0 } }
+            let paths = [deleted.scene] + deleted.items.flatMap { [$0.original, $0.cutout].compactMap { $0 } }
+            do { try await imageStore.enqueueCleanup(relativePaths: paths) }
+            catch { cleanupWarning = "场景已删除，但图片清理任务未能保存。"; return .cleanupPending }
             if await retryDeleteCleanup() { return .deleted }
             return .cleanupPending
         } catch {
@@ -37,7 +38,7 @@ final class SceneDetailViewModel {
         }
     }
     func retryDeleteCleanup() async -> Bool {
-        do { try await imageStore.delete(relativePaths: pendingCleanupPaths); pendingCleanupPaths = []; cleanupWarning = nil; return true }
+        do { try await imageStore.retryPendingCleanup(); cleanupWarning = nil; return true }
         catch { cleanupWarning = "场景已删除，但部分图片未能清理。你可以重试。"; return false }
     }
 }

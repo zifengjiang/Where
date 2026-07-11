@@ -24,6 +24,7 @@ actor ImageStore {
     private let draftsDirectory: URL
     private let imagesDirectory: URL
     private let fileManager = FileManager.default
+    private var cleanupBacklogURL: URL { rootDirectory.appending(path: "PendingImageCleanup.json") }
 
     init(rootDirectory: URL) throws {
         let root = rootDirectory.standardizedFileURL
@@ -115,8 +116,29 @@ actor ImageStore {
     }
 
     func loadImage(relativePath: String) async -> Data? {
-        guard let url = try? finalURL(relativePath) else { return nil }
-        return await Task.detached(priority: .utility) { try? Data(contentsOf: url, options: .mappedIfSafe) }.value
+        await loadImageAsset(relativePath: relativePath)?.data
+    }
+
+    func loadImageAsset(relativePath: String) async -> SceneImageAsset? {
+        guard (try? verifyOwnedStorage()) != nil,
+              let url = try? finalURL(relativePath),
+              isRegularFileWithoutSymlink(at: url),
+              url.resolvingSymlinksInPath().standardizedFileURL == url.standardizedFileURL,
+              url.standardizedFileURL.deletingLastPathComponent() == imagesDirectory.standardizedFileURL,
+              (try? verifyOwnedStorage()) != nil,
+              isRegularFileWithoutSymlink(at: url),
+              let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber,
+              let modified = attributes[.modificationDate] as? Date,
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        let revision = UInt64(modified.timeIntervalSince1970 * 1_000_000) ^ size.uint64Value
+        return SceneImageAsset(data: data, revision: revision)
+    }
+
+    private func isRegularFileWithoutSymlink(at url: URL) -> Bool {
+        var information = stat()
+        guard url.path.withCString({ lstat($0, &information) }) == 0 else { return false }
+        return information.st_mode & S_IFMT == S_IFREG
     }
 
     func cleanOrphans(referencedPaths: Set<String>, olderThan: Date) async throws {
@@ -124,6 +146,31 @@ actor ImageStore {
         let referenced = Set(try referencedPaths.map { try finalURL($0).standardizedFileURL.path })
         try removeStaleFiles(in: imagesDirectory, olderThan: olderThan) { referenced.contains($0.standardizedFileURL.path) }
         try removeStaleFiles(in: draftsDirectory, olderThan: olderThan) { _ in false }
+    }
+
+    func enqueueCleanup(relativePaths: [String]) async throws {
+        try verifyOwnedStorage()
+        var paths = try pendingCleanupPaths()
+        for path in relativePaths { _ = try finalURL(path); paths.insert(path) }
+        let data = try JSONEncoder().encode(paths.sorted())
+        try data.write(to: cleanupBacklogURL, options: .atomic)
+    }
+
+    func hasPendingCleanup() async -> Bool { !((try? pendingCleanupPaths()) ?? []).isEmpty }
+
+    func retryPendingCleanup() async throws {
+        let paths = try pendingCleanupPaths()
+        guard !paths.isEmpty else { return }
+        try await delete(relativePaths: paths)
+        try? fileManager.removeItem(at: cleanupBacklogURL)
+    }
+
+    private func pendingCleanupPaths() throws -> Set<String> {
+        try verifyOwnedStorage()
+        guard fileManager.fileExists(atPath: cleanupBacklogURL.path) else { return [] }
+        let values = try JSONDecoder().decode([String].self, from: Data(contentsOf: cleanupBacklogURL))
+        for value in values { _ = try finalURL(value) }
+        return Set(values)
     }
 
     private func stage(_ data: Data, longestEdge: Int) async throws -> DraftImage {
@@ -247,7 +294,17 @@ actor ImageStore {
 
 protocol SceneImageStoreProtocol: Sendable {
     func loadImage(relativePath: String) async -> Data?
+    func loadImageAsset(relativePath: String) async -> SceneImageAsset?
     func delete(relativePaths: [String]) async throws
+    func enqueueCleanup(relativePaths: [String]) async throws
+    func hasPendingCleanup() async -> Bool
+    func retryPendingCleanup() async throws
+}
+
+extension SceneImageStoreProtocol {
+    func loadImageAsset(relativePath: String) async -> SceneImageAsset? {
+        await loadImage(relativePath: relativePath).map { SceneImageAsset(data: $0, revision: 0) }
+    }
 }
 
 extension ImageStore: SceneImageStoreProtocol {

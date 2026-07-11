@@ -68,10 +68,25 @@ final class SceneRepository: SceneRepositoryProtocol, Sendable {
             let rawID: String = sceneRow["id"]
             guard let sceneID = UUID(uuidString: rawID) else { throw RepositoryError.invalidIdentifier(rawID) }
             let scene = SceneSummary(id: sceneID, name: sceneRow["name"], imagePath: sceneRow["imagePath"], itemCount: sceneRow["itemCount"], createdAt: sceneRow["createdAt"], updatedAt: sceneRow["updatedAt"])
-            let items = try Row.fetchAll(db, sql: "SELECT * FROM item WHERE sceneID = ? ORDER BY updatedAt DESC, id ASC", arguments: [id.uuidString]).map { row in
+            let itemRows = try Row.fetchAll(db, sql: "SELECT * FROM item WHERE sceneID = ? ORDER BY updatedAt DESC, id ASC", arguments: [id.uuidString])
+            let aliasRows = try Row.fetchAll(db, sql: """
+                SELECT itemAlias.itemID, itemAlias.value FROM itemAlias
+                JOIN item ON item.id = itemAlias.itemID WHERE item.sceneID = ?
+                ORDER BY itemAlias.itemID, itemAlias.normalizedValue
+                """, arguments: [id.uuidString])
+            let tagRows = try Row.fetchAll(db, sql: """
+                SELECT itemTag.itemID, tag.name FROM itemTag
+                JOIN item ON item.id = itemTag.itemID JOIN tag ON tag.id = itemTag.tagID
+                WHERE item.sceneID = ? ORDER BY itemTag.itemID, tag.normalizedName
+                """, arguments: [id.uuidString])
+            var aliases: [String: [String]] = [:]
+            for row in aliasRows { aliases[row["itemID"], default: []].append(row["value"]) }
+            var tags: [String: [String]] = [:]
+            for row in tagRows { tags[row["itemID"], default: []].append(row["name"]) }
+            let items = try itemRows.map { row in
                 let rawItemID: String = row["id"]
                 guard let itemID = UUID(uuidString: rawItemID) else { throw RepositoryError.invalidIdentifier(rawItemID) }
-                return ItemSummary(id: itemID, sceneID: sceneID, sceneName: scene.name, sceneImagePath: scene.imagePath, name: row["name"], locationNote: row["locationNote"], note: row["note"], normalizedX: row["normalizedX"], normalizedY: row["normalizedY"], aliases: [], tags: [], appearanceOriginalImagePath: row["appearanceOriginalImagePath"], appearanceCutoutImagePath: row["appearanceCutoutImagePath"], createdAt: row["createdAt"], updatedAt: row["updatedAt"])
+                return ItemSummary(id: itemID, sceneID: sceneID, sceneName: scene.name, sceneImagePath: scene.imagePath, name: row["name"], locationNote: row["locationNote"], note: row["note"], normalizedX: row["normalizedX"], normalizedY: row["normalizedY"], aliases: aliases[rawItemID] ?? [], tags: tags[rawItemID] ?? [], appearanceOriginalImagePath: row["appearanceOriginalImagePath"], appearanceCutoutImagePath: row["appearanceCutoutImagePath"], createdAt: row["createdAt"], updatedAt: row["updatedAt"])
             }
             return SceneDetail(scene: scene, items: items)
         }

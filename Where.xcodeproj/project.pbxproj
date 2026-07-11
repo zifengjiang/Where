@@ -41,6 +41,7 @@
 		DC5027EF176DD66736A9EF92 /* WhereApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC4EBD322FBB03D38C9AD61 /* WhereApp.swift */; };
 		DE2755F0F9979EFF88EACD8B /* SceneDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ADA136B1FF51B379A7BA845 /* SceneDetailView.swift */; };
 		EDE74D7C3554310FB2F6BAEB /* ItemRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F679DDD7730C7D67DDC1E17 /* ItemRepositoryTests.swift */; };
+		EE389D491B48AA893B9E67EA /* SceneThumbnailCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7943C2329BFD7C9F51DDFC8D /* SceneThumbnailCache.swift */; };
 		EFE53A4ED9225AB333DCFB24 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0BFA8833F59276CFBB78FE /* RootTabView.swift */; };
 		F75D8171D7F1E2E6FBECE324 /* RootTabStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A3F462666CD595645450CE /* RootTabStateTests.swift */; };
 		F8608F65E2664F1A5E7CDA8B /* SubjectPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8EEE270F5953C7E29F04B94 /* SubjectPickerView.swift */; };
@@ -85,6 +86,7 @@
 		64CF48E2AA69A90527080536 /* SceneRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneRepository.swift; sourceTree = "<group>"; };
 		6BC4EBD322FBB03D38C9AD61 /* WhereApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereApp.swift; sourceTree = "<group>"; };
 		71F2EA1E2CEBF0E85832293F /* WhereUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WhereUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7943C2329BFD7C9F51DDFC8D /* SceneThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneThumbnailCache.swift; sourceTree = "<group>"; };
 		7ADA136B1FF51B379A7BA845 /* SceneDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDetailView.swift; sourceTree = "<group>"; };
 		7B16B78F8851000ED5B406C6 /* AspectFitGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AspectFitGeometry.swift; sourceTree = "<group>"; };
 		83C5CA120360D27E40C731BC /* SubjectSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectSelectionTests.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				C70C83076D80599A3CC8C3C4 /* ScenePhotoView.swift */,
 				54C139BABA5B171D96F80814 /* ScenesView.swift */,
 				20E7F243729A280AD904AFB6 /* ScenesViewModel.swift */,
+				7943C2329BFD7C9F51DDFC8D /* SceneThumbnailCache.swift */,
 			);
 			path = Scenes;
 			sourceTree = "<group>";
@@ -409,6 +412,7 @@
 				D5B82F98624A5DD2B4452ED7 /* SceneDetailViewModel.swift in Sources */,
 				993F00DA00FEDF212D054A7F /* ScenePhotoView.swift in Sources */,
 				0FC211D07DED836E0D0377A1 /* SceneRepository.swift in Sources */,
+				EE389D491B48AA893B9E67EA /* SceneThumbnailCache.swift in Sources */,
 				7D94012D0372629CCABE4E84 /* ScenesView.swift in Sources */,
 				00480643D2DC0EADDE107D31 /* ScenesViewModel.swift in Sources */,
 				9C5D912A2FCD0862925B0D11 /* SearchNormalizer.swift in Sources */,

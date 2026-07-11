@@ -17,9 +17,11 @@ struct ScenesView: View {
                 else { sceneGrid }
             }
             .navigationTitle("场景")
+            .toolbar { if model.cleanupWarning != nil { ToolbarItem(placement: .topBarTrailing) { Button("重试清理", systemImage: "arrow.clockwise") { Task { await model.retryCleanup() } } } } }
             .navigationDestination(for: UUID.self) { id in SceneDetailView(sceneID: id, repository: repository, imageStore: model.imageStore) }
         }
         .task { model.start() }
+        .onDisappear { model.stop() }
         .alert("删除场景？", isPresented: Binding(get: { model.scenePendingDeletion != nil }, set: { if !$0 { model.cancelDelete() } })) {
             Button("取消", role: .cancel) { model.cancelDelete() }
             Button("删除", role: .destructive) { Task { await model.confirmDelete() } }
@@ -51,5 +53,8 @@ private struct SceneCard: View {
             .frame(height: 130).clipShape(RoundedRectangle(cornerRadius: 18))
         Text(scene.name).font(.headline).lineLimit(1)
         Text("\(scene.itemCount) 件物品").font(.subheadline).foregroundStyle(.secondary)
-    }.task(id: scene.imagePath) { if let data = await imageStore.loadImage(relativePath: scene.imagePath) { image = UIImage(data: data) } } }
+    }.task(id: scene.imagePath) {
+        guard let asset = await imageStore.loadImageAsset(relativePath: scene.imagePath) else { return }
+        image = await SceneThumbnailCache.shared.thumbnail(path: scene.imagePath, asset: asset)?.image
+    } }
 }

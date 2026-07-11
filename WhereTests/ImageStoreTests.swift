@@ -170,6 +170,37 @@ struct ImageStoreTests {
         #expect(Set(drafts.map(\.relativeName)).count == 20)
         #expect(drafts.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
     }
+
+    @Test func loadRejectsFinalFileSymlinkToExternalVictim() async throws {
+        let (store, root) = try makeStore(); defer { remove(root) }
+        let victim = root.deletingLastPathComponent().appending(path: UUID().uuidString)
+        try Data([1, 2, 3]).write(to: victim); defer { remove(victim) }
+        let link = root.appending(path: "Images/link.jpg")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: victim)
+        #expect(await store.loadImage(relativePath: "Images/link.jpg") == nil)
+    }
+
+    @Test func loadRejectsPostInitImagesDirectoryReplacement() async throws {
+        let (store, root) = try makeStore(); defer { remove(root) }
+        let images = root.appending(path: "Images")
+        try FileManager.default.removeItem(at: images)
+        let outside = root.deletingLastPathComponent().appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true); defer { remove(outside) }
+        try Data([9, 8, 7]).write(to: outside.appending(path: "file.jpg"))
+        try FileManager.default.createSymbolicLink(at: images, withDestinationURL: outside)
+        #expect(await store.loadImage(relativePath: "Images/file.jpg") == nil)
+    }
+
+    @Test func cleanupBacklogSurvivesStoreRecreationAndRetriesOnlyFiles() async throws {
+        let (store, root) = try makeStore(); defer { remove(root) }
+        let path = try await store.promote([try await store.stageSceneImage(jpeg(width: 10, height: 10))])[0]
+        try await store.enqueueCleanup(relativePaths: [path])
+        let reopened = try ImageStore(rootDirectory: root)
+        #expect(await reopened.hasPendingCleanup())
+        try await reopened.retryPendingCleanup()
+        #expect(!FileManager.default.fileExists(atPath: root.appending(path: path).path))
+        #expect(await reopened.hasPendingCleanup() == false)
+    }
 }
 
 private func makeStore() throws -> (ImageStore, URL) {

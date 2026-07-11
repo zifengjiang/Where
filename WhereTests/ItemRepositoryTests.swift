@@ -6,6 +6,15 @@ import Testing
 
 struct ItemRepositoryTests {
     @Test
+    func fetchSceneIncludesCompleteAliasesAndTags() async throws {
+        let (_, repository) = try makeRepository()
+        try await repository.saveSceneDraft(sceneDraft(items: [itemDraft(name: "Cable", aliases: ["Charger"], tags: ["Travel"])]))
+        let detail = try await repository.sceneRepository.fetchScene(id: sceneID)
+        #expect(detail.items.first?.aliases == ["Charger"])
+        #expect(detail.items.first?.tags == ["Travel"])
+    }
+
+    @Test
     func savesCompleteGraphAndDeduplicatesNormalizedAliasesAndTags() async throws {
         let (database, repository) = try makeRepository()
         let draft = sceneDraft(items: [

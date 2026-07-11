@@ -1,9 +1,31 @@
 import Foundation
 import Testing
+import UIKit
 @testable import Where
 
 @MainActor
 struct ScenesViewModelTests {
+    @Test func thumbnailCacheHitsAndEvictsByStableRevision() async {
+        let counter = DecodeCounter()
+        let cache = SceneThumbnailCache(capacity: 1) { _ in counter.count += 1; return SceneThumbnail(image: UIImage()) }
+        let asset = SceneImageAsset(data: Data([1]), revision: 1)
+        _ = await cache.thumbnail(path: "a", asset: asset)
+        _ = await cache.thumbnail(path: "a", asset: asset)
+        _ = await cache.thumbnail(path: "b", asset: asset)
+        _ = await cache.thumbnail(path: "a", asset: asset)
+        #expect(counter.count == 3)
+    }
+    @Test func observationTaskDoesNotRetainModel() async {
+        let repository = HangingSceneRepository()
+        weak var weakModel: ScenesViewModel?
+        do {
+            let model = ScenesViewModel(repository: repository, imageStore: FakeSceneImageStore())
+            weakModel = model
+            model.start()
+        }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(weakModel == nil)
+    }
     @Test func emptyObservationFinishesLoading() async {
         let model = ScenesViewModel(repository: FakeSceneRepository(events: [.success([])]), imageStore: FakeSceneImageStore())
         model.start()
@@ -89,6 +111,7 @@ struct ScenesViewModelTests {
         await model.confirmDelete()
         #expect(repository.deleteCount == 1)
         #expect(model.cleanupWarning != nil)
+        #expect(await images.hasPendingCleanup())
         images.error = nil
         await model.retryCleanup()
         #expect(repository.deleteCount == 1)
@@ -132,7 +155,14 @@ struct ScenesViewModelTests {
     }
 }
 
+private final class HangingSceneRepository: SceneRepositoryProtocol, @unchecked Sendable {
+    func observeScenes() -> AsyncThrowingStream<[SceneSummary], Error> { AsyncThrowingStream { _ in } }
+    func fetchScene(id: UUID) async throws -> SceneDetail { throw TestError.failed }
+    func deleteScene(id: UUID) async throws -> DeletedSceneImagePaths { throw TestError.failed }
+}
+
 private enum TestError: Error { case failed }
+private final class DecodeCounter: @unchecked Sendable { var count = 0 }
 private final class EventLog: @unchecked Sendable { var values: [String] = [] }
 
 private final class FakeSceneRepository: SceneRepositoryProtocol, @unchecked Sendable {
@@ -161,10 +191,13 @@ private final class FakeSceneRepository: SceneRepositoryProtocol, @unchecked Sen
 }
 
 private final class FakeSceneImageStore: SceneImageStoreProtocol, @unchecked Sendable {
-    var error: Error?; var deleteCount = 0; let log: EventLog?
+    var error: Error?; var deleteCount = 0; let log: EventLog?; var pendingPaths: [String] = []
     init(error: Error? = nil, log: EventLog? = nil) { self.error = error; self.log = log }
     func loadImage(relativePath: String) async -> Data? { nil }
     func delete(relativePaths: [String]) async throws { deleteCount += 1; log?.values.append("images"); if let error { throw error } }
+    func enqueueCleanup(relativePaths: [String]) async throws { pendingPaths.append(contentsOf: relativePaths) }
+    func hasPendingCleanup() async -> Bool { !pendingPaths.isEmpty }
+    func retryPendingCleanup() async throws { try await delete(relativePaths: pendingPaths); pendingPaths = [] }
 }
 
 private func fixtureScene(name: String = "Room", count: Int = 1) -> SceneSummary {
