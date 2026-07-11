@@ -7,10 +7,15 @@ struct AppDependencies: Sendable {
     let itemRepository: any ItemRepositoryProtocol
 
     static func production() async throws -> AppDependencies {
-        try await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             return try makeProduction()
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private static func makeProduction(fileManager: FileManager = .default) throws -> AppDependencies {

@@ -70,17 +70,27 @@ final class AppStartupModel {
 
         do {
             let dependencies = try await makeDependencies()
-            guard generation == loadGeneration, !Task.isCancelled else { return }
+            guard generation == loadGeneration else { return }
+            guard !Task.isCancelled else {
+                resetCancelledLoad(generation: generation)
+                return
+            }
             state = .ready(dependencies)
         } catch is CancellationError {
-            if generation == loadGeneration {
-                loadGeneration = 0
-                state = .loading
-            }
-            return
+            resetCancelledLoad(generation: generation)
         } catch {
-            guard generation == loadGeneration, !Task.isCancelled else { return }
+            guard generation == loadGeneration else { return }
+            guard !Task.isCancelled else {
+                resetCancelledLoad(generation: generation)
+                return
+            }
             state = .failed(error.localizedDescription)
         }
+    }
+
+    private func resetCancelledLoad(generation: Int) {
+        guard generation == loadGeneration else { return }
+        loadGeneration = 0
+        state = .loading
     }
 }

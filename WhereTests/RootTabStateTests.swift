@@ -136,6 +136,38 @@ struct RootTabStateTests {
         #expect(ready.database === currentDependencies.database)
     }
 
+    @Test
+    func cancelledLoadThatReturnsCanRestartWithLoadIfNeeded() async throws {
+        let cancelledDependencies = try AppDependencies.testing()
+        let restartedDependencies = try AppDependencies.testing()
+        let loads = ControlledStartupLoads(
+            stale: cancelledDependencies,
+            current: restartedDependencies
+        )
+        let startup = AppStartupModel { () async throws -> AppDependencies in
+            await loads.load()
+        }
+
+        let cancelledLoad = Task { await startup.load() }
+        await loads.waitUntilFirstLoadStarts()
+        cancelledLoad.cancel()
+        await loads.finishFirstLoad()
+        await cancelledLoad.value
+
+        guard case .loading = startup.state else {
+            Issue.record("Expected cancellation to return startup to loading")
+            return
+        }
+
+        await startup.loadIfNeeded()
+
+        guard case .ready(let ready) = startup.state else {
+            Issue.record("Expected startup to restart after cancellation")
+            return
+        }
+        #expect(ready.database === restartedDependencies.database)
+    }
+
     @Test(arguments: [
         (TabViewBottomAccessoryPlacement.inline, AddSceneAccessoryPresentation.iconOnly),
         (.expanded, .labeled),
