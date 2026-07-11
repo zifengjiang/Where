@@ -6,7 +6,14 @@ struct AppDependencies: Sendable {
     let sceneRepository: any SceneRepositoryProtocol
     let itemRepository: any ItemRepositoryProtocol
 
-    static func production(fileManager: FileManager = .default) throws -> AppDependencies {
+    static func production() async throws -> AppDependencies {
+        try await Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return try makeProduction()
+        }.value
+    }
+
+    private static func makeProduction(fileManager: FileManager = .default) throws -> AppDependencies {
         let applicationSupport = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -22,11 +29,15 @@ struct AppDependencies: Sendable {
         let database = try AppDatabase(
             path: rootDirectory.appending(path: "where.sqlite").path
         )
+        let sceneRepository = SceneRepository(database: database)
         return AppDependencies(
             database: database,
             imageStore: try ImageStore(rootDirectory: rootDirectory),
-            sceneRepository: SceneRepository(database: database),
-            itemRepository: ItemRepository(database: database)
+            sceneRepository: sceneRepository,
+            itemRepository: ItemRepository(
+                database: database,
+                sceneRepository: sceneRepository
+            )
         )
     }
 
@@ -39,11 +50,15 @@ struct AppDependencies: Sendable {
         )
 
         let database = try AppDatabase.inMemory()
+        let sceneRepository = SceneRepository(database: database)
         return try AppDependencies(
             database: database,
             imageStore: ImageStore(rootDirectory: rootDirectory),
-            sceneRepository: SceneRepository(database: database),
-            itemRepository: ItemRepository(database: database)
+            sceneRepository: sceneRepository,
+            itemRepository: ItemRepository(
+                database: database,
+                sceneRepository: sceneRepository
+            )
         )
     }
 }

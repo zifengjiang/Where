@@ -1,45 +1,86 @@
+import Observation
 import SwiftUI
 
 @main
 struct WhereApp: App {
-    @State private var startup: AppStartupState
-
-    init() {
-        _startup = State(initialValue: AppStartupState.load())
-    }
+    @State private var startup = AppStartupModel()
 
     var body: some Scene {
         WindowGroup {
-            switch startup {
-            case .ready:
-                RootTabView()
-            case .failed(let message):
-                ContentUnavailableView {
-                    Label("无法启动", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("重试") {
-                        startup = AppStartupState.load()
+            Group {
+                switch startup.state {
+                case .loading:
+                    ProgressView("正在启动…")
+                case .ready(let dependencies):
+                    RootTabView(dependencies: dependencies)
+                case .failed(let message):
+                    ContentUnavailableView {
+                        Label("无法启动", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        Button("重试") {
+                            Task {
+                                await startup.load()
+                            }
+                        }
+                        .buttonStyle(.glassProminent)
                     }
-                    .buttonStyle(.glassProminent)
                 }
+            }
+            .task {
+                await startup.loadIfNeeded()
             }
         }
     }
 }
 
 enum AppStartupState {
+    case loading
     case ready(AppDependencies)
     case failed(String)
+}
 
-    static func load(
-        makeDependencies: () throws -> AppDependencies = { try AppDependencies.production() }
-    ) -> AppStartupState {
+@MainActor
+@Observable
+final class AppStartupModel {
+    typealias DependencyLoader = @Sendable () async throws -> AppDependencies
+
+    private(set) var state: AppStartupState = .loading
+    private let makeDependencies: DependencyLoader
+    private var loadGeneration = 0
+
+    init(
+        makeDependencies: @escaping DependencyLoader = {
+            try await AppDependencies.production()
+        }
+    ) {
+        self.makeDependencies = makeDependencies
+    }
+
+    func loadIfNeeded() async {
+        guard case .loading = state, loadGeneration == 0 else { return }
+        await load()
+    }
+
+    func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        state = .loading
+
         do {
-            return .ready(try makeDependencies())
+            let dependencies = try await makeDependencies()
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            state = .ready(dependencies)
+        } catch is CancellationError {
+            if generation == loadGeneration {
+                loadGeneration = 0
+                state = .loading
+            }
+            return
         } catch {
-            return .failed(error.localizedDescription)
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            state = .failed(error.localizedDescription)
         }
     }
 }

@@ -33,6 +33,8 @@ final class RootTabState {
 }
 
 struct RootTabView: View {
+    let dependencies: AppDependencies
+
     @State private var state = RootTabState()
 
     var body: some View {

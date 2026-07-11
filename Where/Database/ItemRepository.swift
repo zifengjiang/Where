@@ -21,11 +21,12 @@ final class ItemRepository: ItemRepositoryProtocol, Sendable {
 
     init(
         database: AppDatabase,
+        sceneRepository: SceneRepository? = nil,
         queryDidExecute: @escaping @Sendable (ReadQuery) -> Void = { _ in }
     ) {
         self.database = database
         self.queryDidExecute = queryDidExecute
-        self.sceneRepository = SceneRepository(database: database)
+        self.sceneRepository = sceneRepository ?? SceneRepository(database: database)
     }
 
     func saveSceneDraft(_ draft: SceneDraft) async throws {
