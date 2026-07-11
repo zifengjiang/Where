@@ -48,7 +48,8 @@ final class AppStartupModel {
 
     private(set) var state: AppStartupState = .loading
     private let makeDependencies: DependencyLoader
-    private var loadGeneration = 0
+    private var nextGeneration = 0
+    private var activeGeneration: Int?
 
     init(
         makeDependencies: @escaping DependencyLoader = {
@@ -59,38 +60,41 @@ final class AppStartupModel {
     }
 
     func loadIfNeeded() async {
-        guard case .loading = state, loadGeneration == 0 else { return }
+        guard case .loading = state, activeGeneration == nil else { return }
         await load()
     }
 
     func load() async {
-        loadGeneration += 1
-        let generation = loadGeneration
+        nextGeneration += 1
+        let generation = nextGeneration
+        activeGeneration = generation
         state = .loading
 
         do {
             let dependencies = try await makeDependencies()
-            guard generation == loadGeneration else { return }
+            guard generation == activeGeneration else { return }
             guard !Task.isCancelled else {
                 resetCancelledLoad(generation: generation)
                 return
             }
+            activeGeneration = nil
             state = .ready(dependencies)
         } catch is CancellationError {
             resetCancelledLoad(generation: generation)
         } catch {
-            guard generation == loadGeneration else { return }
+            guard generation == activeGeneration else { return }
             guard !Task.isCancelled else {
                 resetCancelledLoad(generation: generation)
                 return
             }
+            activeGeneration = nil
             state = .failed(error.localizedDescription)
         }
     }
 
     private func resetCancelledLoad(generation: Int) {
-        guard generation == loadGeneration else { return }
-        loadGeneration = 0
+        guard generation == activeGeneration else { return }
+        activeGeneration = nil
         state = .loading
     }
 }

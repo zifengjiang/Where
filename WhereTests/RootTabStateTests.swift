@@ -168,6 +168,40 @@ struct RootTabStateTests {
         #expect(ready.database === restartedDependencies.database)
     }
 
+    @Test
+    func generationsStayUniqueAcrossCancelledRetryAndRestart() async throws {
+        let firstDependencies = try AppDependencies.testing()
+        let cancelledDependencies = try AppDependencies.testing()
+        let currentDependencies = try AppDependencies.testing()
+        let loads = ThreeGenerationStartupLoads(
+            first: firstDependencies,
+            second: cancelledDependencies,
+            third: currentDependencies
+        )
+        let startup = AppStartupModel { () async throws -> AppDependencies in
+            await loads.load()
+        }
+
+        let firstLoad = Task { await startup.load() }
+        await loads.waitUntilLoadStarts(1)
+
+        let cancelledLoad = Task { await startup.load() }
+        await loads.waitUntilLoadStarts(2)
+        cancelledLoad.cancel()
+        await loads.finishLoad(2)
+        await cancelledLoad.value
+
+        await startup.loadIfNeeded()
+        await loads.finishLoad(1)
+        await firstLoad.value
+
+        guard case .ready(let ready) = startup.state else {
+            Issue.record("Expected the third generation to remain ready")
+            return
+        }
+        #expect(ready.database === currentDependencies.database)
+    }
+
     @Test(arguments: [
         (TabViewBottomAccessoryPlacement.inline, AddSceneAccessoryPresentation.iconOnly),
         (.expanded, .labeled),
@@ -233,5 +267,37 @@ private actor ControlledStartupLoads {
     func finishFirstLoad() {
         firstLoadContinuation?.resume(returning: stale)
         firstLoadContinuation = nil
+    }
+}
+
+private actor ThreeGenerationStartupLoads {
+    private let dependencies: [AppDependencies]
+    private var callCount = 0
+    private var continuations: [Int: CheckedContinuation<AppDependencies, Never>] = [:]
+    private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+    init(first: AppDependencies, second: AppDependencies, third: AppDependencies) {
+        dependencies = [first, second, third]
+    }
+
+    func load() async -> AppDependencies {
+        callCount += 1
+        let call = callCount
+        guard call < 3 else { return dependencies[2] }
+        return await withCheckedContinuation { continuation in
+            continuations[call] = continuation
+            waiters.removeValue(forKey: call)?.resume()
+        }
+    }
+
+    func waitUntilLoadStarts(_ load: Int) async {
+        guard continuations[load] == nil else { return }
+        await withCheckedContinuation { continuation in
+            waiters[load] = continuation
+        }
+    }
+
+    func finishLoad(_ load: Int) {
+        continuations.removeValue(forKey: load)?.resume(returning: dependencies[load - 1])
     }
 }

@@ -9,7 +9,9 @@ struct AppDependencies: Sendable {
     static func production() async throws -> AppDependencies {
         let task = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
-            return try makeProduction()
+            let dependencies = try makeProduction()
+            try Task.checkCancellation()
+            return dependencies
         }
         return try await withTaskCancellationHandler {
             try await task.value
