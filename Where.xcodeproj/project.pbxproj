@@ -34,7 +34,9 @@
 		B11330E13D9D6E5BCC9F2CE0 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = B8EE3B123D02420914713689 /* GRDB */; };
 		CE6B5309F838700228CCB7E1 /* AppDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D34D45CB33A0CE15F0E1CF43 /* AppDatabaseTests.swift */; };
 		D0A9182D1BC164A72B061D8C /* ItemCardStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C5B9EEAC6C06D4D4DCAEA7 /* ItemCardStateTests.swift */; };
+		D8A000000000000000000001 /* RootTabStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8A000000000000000000002 /* RootTabStateTests.swift */; };
 		DC5027EF176DD66736A9EF92 /* WhereApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC4EBD322FBB03D38C9AD61 /* WhereApp.swift */; };
+		D8A000000000000000000003 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8A000000000000000000004 /* RootTabView.swift */; };
 		EDE74D7C3554310FB2F6BAEB /* ItemRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F679DDD7730C7D67DDC1E17 /* ItemRepositoryTests.swift */; };
 		F8608F65E2664F1A5E7CDA8B /* SubjectPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8EEE270F5953C7E29F04B94 /* SubjectPickerView.swift */; };
 /* End PBXBuildFile section */
@@ -85,6 +87,8 @@
 		C70C83076D80599A3CC8C3C4 /* ScenePhotoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenePhotoView.swift; sourceTree = "<group>"; };
 		C746F7274945398B2B429CA3 /* ItemRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemRepository.swift; sourceTree = "<group>"; };
 		D34D45CB33A0CE15F0E1CF43 /* AppDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDatabaseTests.swift; sourceTree = "<group>"; };
+		D8A000000000000000000002 /* RootTabStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabStateTests.swift; sourceTree = "<group>"; };
+		D8A000000000000000000004 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		EA47D2499F3983EF98B459AB /* Where.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Where.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4E29E455D64C07424465030 /* SubjectSegmentationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectSegmentationService.swift; sourceTree = "<group>"; };
 		F8EEE270F5953C7E29F04B94 /* SubjectPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectPickerView.swift; sourceTree = "<group>"; };
@@ -158,6 +162,7 @@
 			isa = PBXGroup;
 			children = (
 				2AAC36FDCF7E2D8E93260A28 /* AppDependencies.swift */,
+				D8A000000000000000000004 /* RootTabView.swift */,
 				6BC4EBD322FBB03D38C9AD61 /* WhereApp.swift */,
 			);
 			path = App;
@@ -225,6 +230,7 @@
 				10ADF3E405EAF4492B451CC7 /* ImageStoreTests.swift */,
 				85C5B9EEAC6C06D4D4DCAEA7 /* ItemCardStateTests.swift */,
 				5F679DDD7730C7D67DDC1E17 /* ItemRepositoryTests.swift */,
+				D8A000000000000000000002 /* RootTabStateTests.swift */,
 				2AFA1F637196214A1E477530 /* ScenePinLayoutTests.swift */,
 				36EBB7C41801B8414226EBB1 /* SearchNormalizerTests.swift */,
 				C2FC0669E02FA12EA4F9E54C /* SilhouetteTextLayoutTests.swift */,
@@ -351,6 +357,7 @@
 				0494E714A3ED20E208A540F4 /* ImageStoreTests.swift in Sources */,
 				D0A9182D1BC164A72B061D8C /* ItemCardStateTests.swift in Sources */,
 				EDE74D7C3554310FB2F6BAEB /* ItemRepositoryTests.swift in Sources */,
+				D8A000000000000000000001 /* RootTabStateTests.swift in Sources */,
 				A0972CAFBB81368F37452435 /* ScenePinLayoutTests.swift in Sources */,
 				403240947386CFE4B8D5965C /* SearchNormalizerTests.swift in Sources */,
 				3C9C01BD06834EC53885C8FC /* SilhouetteTextLayoutTests.swift in Sources */,
@@ -381,6 +388,7 @@
 				65C47FA6FC217880B25F1889 /* Models.swift in Sources */,
 				73015B13C9B47EB561B717CA /* NoteEditorView.swift in Sources */,
 				51C6CB2D92AAB562A8E088F1 /* Records.swift in Sources */,
+				D8A000000000000000000003 /* RootTabView.swift in Sources */,
 				993F00DA00FEDF212D054A7F /* ScenePhotoView.swift in Sources */,
 				0FC211D07DED836E0D0377A1 /* SceneRepository.swift in Sources */,
 				9C5D912A2FCD0862925B0D11 /* SearchNormalizer.swift in Sources */,

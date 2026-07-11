@@ -1,0 +1,86 @@
+import Observation
+import SwiftUI
+
+enum RootTabSelection: Hashable {
+    case scenes
+    case items
+}
+
+@MainActor
+@Observable
+final class RootTabState {
+    var selection: RootTabSelection
+    var isPresentingCapture = false
+
+    init(selection: RootTabSelection = .scenes) {
+        self.selection = selection
+    }
+
+    func select(_ selection: RootTabSelection) { self.selection = selection }
+    func presentCapture() { isPresentingCapture = true }
+    func dismissCapture() { isPresentingCapture = false }
+}
+
+struct RootTabView: View {
+    @State private var state = RootTabState()
+
+    var body: some View {
+        @Bindable var state = state
+
+        TabView(selection: $state.selection) {
+            Tab("场景", systemImage: "photo.on.rectangle", value: .scenes) {
+                NavigationStack {
+                    ContentUnavailableView(
+                        "还没有场景",
+                        systemImage: "photo.on.rectangle",
+                        description: Text("添加一个场景，开始记录物品的位置。")
+                    )
+                    .navigationTitle("场景")
+                }
+            }
+
+            Tab("所有物品", systemImage: "shippingbox", value: .items) {
+                NavigationStack {
+                    ContentUnavailableView(
+                        "还没有物品",
+                        systemImage: "shippingbox",
+                        description: Text("场景中的物品会显示在这里。")
+                    )
+                    .navigationTitle("所有物品")
+                }
+            }
+        }
+        .tabViewBottomAccessory {
+            Button(action: state.presentCapture) {
+                Label("添加场景", systemImage: "plus")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.glassProminent)
+            .accessibilityLabel("添加场景")
+            .accessibilityIdentifier("add-scene-button")
+        }
+        .fullScreenCover(isPresented: $state.isPresentingCapture) {
+            SceneCapturePlaceholderView()
+        }
+    }
+}
+
+private struct SceneCapturePlaceholderView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ContentUnavailableView(
+                "添加场景",
+                systemImage: "camera",
+                description: Text("场景拍摄将在这里开始。")
+            )
+            .navigationTitle("添加场景")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+    }
+}
