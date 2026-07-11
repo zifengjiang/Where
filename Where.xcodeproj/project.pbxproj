@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0FA50A5A9B22326E39A80B52 /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033340F666E38C1D771D85D8 /* ImageStore.swift */; };
+		A10000000000000000000001 /* ImageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* ImageStoreTests.swift */; };
 		0FC211D07DED836E0D0377A1 /* SceneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64CF48E2AA69A90527080536 /* SceneRepository.swift */; };
 		131985AC888164D04D9CEB6A /* WhereUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C683EA85F74FC0F02E3184 /* WhereUITests.swift */; };
 		14EA170DD46F2B141AFA1ADD /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 94B0204F3C0241975DD27DD5 /* GRDB */; };
@@ -44,6 +45,7 @@
 
 /* Begin PBXFileReference section */
 		033340F666E38C1D771D85D8 /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
+		A10000000000000000000002 /* ImageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStoreTests.swift; sourceTree = "<group>"; };
 		20A8F5BA018D938FBB46996B /* Records.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Records.swift; sourceTree = "<group>"; };
 		2785C3E616D50F787106E3D5 /* WhereTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WhereTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2AAC36FDCF7E2D8E93260A28 /* AppDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDependencies.swift; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 		E2E38819AE1AAC04B2E4944F /* WhereTests */ = {
 			isa = PBXGroup;
 			children = (
+				A10000000000000000000002 /* ImageStoreTests.swift */,
 				D34D45CB33A0CE15F0E1CF43 /* AppDatabaseTests.swift */,
 				5F679DDD7730C7D67DDC1E17 /* ItemRepositoryTests.swift */,
 				36EBB7C41801B8414226EBB1 /* SearchNormalizerTests.swift */,
@@ -272,6 +275,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000001 /* ImageStoreTests.swift in Sources */,
 				CE6B5309F838700228CCB7E1 /* AppDatabaseTests.swift in Sources */,
 				EDE74D7C3554310FB2F6BAEB /* ItemRepositoryTests.swift in Sources */,
 				403240947386CFE4B8D5965C /* SearchNormalizerTests.swift in Sources */,
