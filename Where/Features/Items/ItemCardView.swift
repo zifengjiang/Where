@@ -9,11 +9,65 @@ struct ItemCardFaceActivation: Equatable {
     let accessibilityHidden: Bool
 }
 
-struct ItemCardLayoutIdentity: Equatable {
+struct ItemCardLayoutIdentity: Hashable, Sendable {
     let itemID: UUID
     let note: String
+    let imageIdentity: String
     let size: CGSize
     let sizeCategory: UIContentSizeCategory
+
+    init(itemID: UUID, note: String, imageIdentity: String = "", size: CGSize, sizeCategory: UIContentSizeCategory) {
+        self.itemID = itemID; self.note = note; self.imageIdentity = imageIdentity; self.size = size; self.sizeCategory = sizeCategory
+    }
+}
+
+struct ImmutableCGImage: @unchecked Sendable {
+    let image: CGImage
+    init(_ image: CGImage) { self.image = image.copy()! }
+}
+
+actor ItemCardLayoutCache {
+    static let shared = ItemCardLayoutCache()
+    private var values: [ItemCardLayoutIdentity: SilhouetteTextLayoutResult] = [:]
+    private var tasks: [ItemCardLayoutIdentity: Task<SilhouetteTextLayoutResult, Never>] = [:]
+
+    func result(for identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async -> SilhouetteTextLayoutResult) async -> SilhouetteTextLayoutResult {
+        if let value = values[identity] { return value }
+        if let task = tasks[identity] { return await task.value }
+        let task = Task { await compute() }
+        tasks[identity] = task
+        let value = await task.value
+        values[identity] = value
+        tasks[identity] = nil
+        return value
+    }
+
+    func cancel(_ identity: ItemCardLayoutIdentity) {
+        tasks[identity]?.cancel()
+        tasks[identity] = nil
+    }
+}
+
+@MainActor final class ItemCardLayoutModel: ObservableObject {
+    @Published private(set) var result: SilhouetteTextLayoutResult?
+    @Published private(set) var identity: ItemCardLayoutIdentity?
+    private let cache: ItemCardLayoutCache
+    private var loadTask: Task<Void, Never>?
+    private var requestedIdentity: ItemCardLayoutIdentity?
+
+    init(cache: ItemCardLayoutCache = .shared) { self.cache = cache }
+    func load(identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async -> SilhouetteTextLayoutResult) {
+        let staleIdentity = requestedIdentity
+        requestedIdentity = identity
+        loadTask?.cancel(); result = nil
+        loadTask = Task { [cache] in
+            if let staleIdentity, staleIdentity != identity { await cache.cancel(staleIdentity) }
+            let value = await cache.result(for: identity, compute: compute)
+            guard !Task.isCancelled else { return }
+            self.identity = identity; self.result = value
+        }
+    }
+    deinit { loadTask?.cancel() }
 }
 
 struct ItemCardState: Equatable {
@@ -36,10 +90,13 @@ struct ItemCardState: Equatable {
         let isActive = face == activeSide
         return ItemCardFaceActivation(allowsHitTesting: isActive, accessibilityHidden: !isActive)
     }
+    static func accessibilityHint(for action: ItemCardAction, side: ItemCardSide) -> String {
+        switch action { case .flipCard: side == .back ? "Show image" : "Show note"; case .fullNote: "Open full note" }
+    }
 
     static func createdAtText(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter(); formatter.locale = locale; formatter.timeZone = timeZone
-        formatter.dateFormat = "MMM d, yyyy 'at' h:mm a"
+        formatter.dateStyle = .medium; formatter.timeStyle = .short
         return "Recorded \(formatter.string(from: date))"
     }
 }
@@ -51,6 +108,7 @@ struct ItemCardView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sizeCategory) private var sizeCategory
     @State private var state: ItemCardState
+    @StateObject private var layoutModel = ItemCardLayoutModel()
 
     init(item: ItemSummary, cutoutImage: UIImage, onEditNote: ((String) -> Void)? = nil) {
         self.item = item; self.cutoutImage = cutoutImage; self.onEditNote = onEditNote
@@ -89,29 +147,43 @@ struct ItemCardView: View {
     }
 
     private func back(size: CGSize) -> some View {
-        let result = cutoutImage.cgImage.map { SilhouetteTextLayout.layout(text: item.note ?? "", alphaImage: $0, canvasSize: size, fontSize: UIFont.preferredFont(forTextStyle: .body).pointSize, sizeCategory: sizeCategory.uiKit) }
+        let result = layoutModel.result
+        let category = sizeCategory.uiKit
+        let metrics = SilhouetteTextLayout.metrics(sizeCategory: category)
+        let imageID = cutoutImage.cgImage.map { String(ObjectIdentifier($0).hashValue) } ?? "missing"
         let hasDateSpace = result.map { !$0.overflowed && ($0.lines.last?.rect.maxY ?? $0.path.boundingBox.minY) + 28 < $0.path.boundingBox.maxY } ?? false
-        let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", size: size, sizeCategory: sizeCategory.uiKit)
+        let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", imageIdentity: imageID, size: size, sizeCategory: category)
         return ZStack(alignment: .bottom) {
             Canvas { context, _ in
                 guard let result else { return }
                 context.fill(Path(result.path), with: .color(Color(red: 0.96, green: 0.90, blue: 0.78)))
-                for line in result.lines { context.draw(Text(line.text).font(.body).foregroundStyle(.black), in: line.rect) }
+                for line in result.lines { context.draw(Text(line.text).font(.system(size: metrics.fontSize)).foregroundStyle(.black), in: line.rect) }
                 if hasDateSpace {
                     context.draw(Text(ItemCardState.createdAtText(item.createdAt)).font(.caption2).foregroundStyle(.secondary),
                                  at: CGPoint(x: result.path.boundingBox.midX, y: result.path.boundingBox.maxY - 12))
                 }
             }
             .contentShape(Rectangle()).onTapGesture { state.handle(.flipCard) }
+            .accessibilityHint(ItemCardState.accessibilityHint(for: .flipCard, side: .back))
             if result?.overflowed == true || !hasDateSpace {
                 Button(result?.overflowed == true ? "… More" : "Details") { state.handle(.fullNote) }
                     .font(.caption).buttonStyle(.borderedProminent).tint(.brown)
                     .accessibilityHint("Opens the full note without flipping the card")
             }
         }
-        .task(id: identity) { state.noteOverflowed = (result?.overflowed ?? false) || !hasDateSpace }
+        .task(id: identity) {
+            guard let cgImage = cutoutImage.cgImage else { return }
+            let immutable = ImmutableCGImage(cgImage)
+            layoutModel.load(identity: identity) {
+                await Task.detached {
+                    SilhouetteTextLayout.layout(text: identity.note, alphaImage: immutable.image, canvasSize: identity.size,
+                                                fontSize: metrics.fontSize, lineHeight: metrics.lineHeight, sizeCategory: category)
+                }.value
+            }
+        }
+        .onChange(of: result?.overflowed) { _, _ in state.noteOverflowed = (result?.overflowed ?? false) || !hasDateSpace }
         .accessibilityLabel("\(item.name), note: \(item.note ?? "No note"). \(ItemCardState.createdAtText(item.createdAt))")
-        .accessibilityHint(result?.overflowed == true ? "Tap to read the full note" : "Tap to show image")
+        .accessibilityHint(ItemCardState.accessibilityHint(for: .flipCard, side: .back))
         .accessibilityAddTraits(.isButton)
     }
 }

@@ -14,23 +14,43 @@ struct SilhouetteTextLayoutResult: @unchecked Sendable {
     let lines: [SilhouetteLine]
     let overflowed: Bool
     let usesFallbackCard: Bool
+
+    init(path: CGPath, lines: [SilhouetteLine], overflowed: Bool, usesFallbackCard: Bool) {
+        self.path = path.copy()!
+        self.lines = lines
+        self.overflowed = overflowed
+        self.usesFallbackCard = usesFallbackCard
+    }
+}
+
+struct SilhouetteTextMetrics: Sendable, Equatable {
+    let fontSize: CGFloat
+    let lineHeight: CGFloat
 }
 
 enum SilhouetteTextLayout {
     private static let maximumGridSide = 160
     private static let alphaThreshold: UInt8 = 96
 
+    static func metrics(sizeCategory: UIContentSizeCategory) -> SilhouetteTextMetrics {
+        let traits = UITraitCollection(preferredContentSizeCategory: sizeCategory)
+        let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+        return SilhouetteTextMetrics(fontSize: font.pointSize, lineHeight: font.lineHeight)
+    }
+
     static func layout(
         text: String,
         alphaImage: CGImage,
         canvasSize: CGSize,
         fontSize: CGFloat,
+        lineHeight requestedLineHeight: CGFloat? = nil,
         sizeCategory: UIContentSizeCategory = .large
     ) -> SilhouetteTextLayoutResult {
-        guard canvasSize.width > 0, canvasSize.height > 0 else { return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize) }
+        let resolvedLineHeight = requestedLineHeight ?? fontSize * 1.25
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, lineHeight: resolvedLineHeight) }
         let grid = alphaGrid(from: alphaImage)
         guard let component = largestComponent(in: grid), component.count >= 4 else {
-            return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize)
+            return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, lineHeight: resolvedLineHeight)
         }
 
         let sx = canvasSize.width / CGFloat(grid.width), sy = canvasSize.height / CGFloat(grid.height)
@@ -47,7 +67,7 @@ enum SilhouetteTextLayout {
         let accessibilityFactor: CGFloat = sizeCategory.isAccessibilityCategory ? 6.2 : 3.2
         let usableArea = CGFloat(component.count) * sx * sy
         guard maxUsableWidth >= fontSize * accessibilityFactor, usableArea >= fontSize * fontSize * 10 else {
-            return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, boundingBox: bounds)
+            return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, lineHeight: resolvedLineHeight, boundingBox: bounds)
         }
 
         let path = CGMutablePath()
@@ -61,7 +81,7 @@ enum SilhouetteTextLayout {
             }
         }
 
-        let lineHeight = fontSize * 1.25
+        let lineHeight = resolvedLineHeight
         let rows = horizontalRows(spans: spans, sx: sx, sy: sy, inset: inset, lineHeight: lineHeight)
         let font = CTFontCreateWithName("-apple-system" as CFString, fontSize, nil)
         let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
@@ -178,13 +198,12 @@ enum SilhouetteTextLayout {
         return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
 
-    private static func fallback(text: String, canvasSize: CGSize, fontSize: CGFloat, boundingBox: CGRect? = nil) -> SilhouetteTextLayoutResult {
+    private static func fallback(text: String, canvasSize: CGSize, fontSize: CGFloat, lineHeight: CGFloat, boundingBox: CGRect? = nil) -> SilhouetteTextLayoutResult {
         let box = (boundingBox ?? CGRect(origin: .zero, size: canvasSize)).insetBy(dx: 4, dy: 4)
         let path = CGPath(roundedRect: box, cornerWidth: min(18, box.width / 5), cornerHeight: min(18, box.height / 5), transform: nil)
         let content = box.insetBy(dx: max(8, fontSize * 0.7), dy: max(8, fontSize * 0.7))
         let font = CTFontCreateWithName("-apple-system" as CFString, fontSize, nil)
         let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        let lineHeight = fontSize * 1.25
         var lines: [SilhouetteLine] = [], index = 0, y = content.minY
         while index < words.count, y + lineHeight <= content.maxY {
             var accepted = words[index], next = index + 1

@@ -4,6 +4,19 @@ import UIKit
 @testable import Where
 
 struct SilhouetteTextLayoutTests {
+    @Test func resultCopiesMutableInputPath() {
+        let mutable = CGMutablePath(); mutable.addRect(CGRect(x: 0, y: 0, width: 20, height: 20))
+        let result = SilhouetteTextLayoutResult(path: mutable, lines: [], overflowed: false, usesFallbackCard: false)
+        mutable.addRect(CGRect(x: 100, y: 100, width: 40, height: 40))
+        #expect(result.path.boundingBox == CGRect(x: 0, y: 0, width: 20, height: 20))
+    }
+
+    @Test func dynamicTypeMetricsIncreaseLineHeightAndFallbackThreshold() {
+        let normal = SilhouetteTextLayout.metrics(sizeCategory: .large)
+        let accessibility = SilhouetteTextLayout.metrics(sizeCategory: .accessibilityExtraExtraExtraLarge)
+        #expect(accessibility.fontSize > normal.fontSize)
+        #expect(accessibility.lineHeight > normal.lineHeight)
+    }
     @Test func rectangleInsetsPathAndKeepsLinesInOpaqueRegion() throws {
         let image = mask(width: 100, height: 80) { x, y in x >= 10 && x < 90 && y >= 8 && y < 72 ? 255 : 0 }
         let result = SilhouetteTextLayout.layout(text: "one two three four five six", alphaImage: image, canvasSize: CGSize(width: 200, height: 160), fontSize: 16)
