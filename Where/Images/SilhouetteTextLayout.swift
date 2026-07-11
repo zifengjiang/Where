@@ -46,10 +46,26 @@ enum SilhouetteTextLayout {
         lineHeight requestedLineHeight: CGFloat? = nil,
         sizeCategory: UIContentSizeCategory = .large
     ) -> SilhouetteTextLayoutResult {
+        // The synchronous compatibility entry point is used by callers that do not
+        // own cancellable background work.
+        try! cancellableLayout(text: text, alphaImage: alphaImage, canvasSize: canvasSize, fontSize: fontSize,
+                               lineHeight: requestedLineHeight, sizeCategory: sizeCategory, checkCancellation: {})
+    }
+
+    static func cancellableLayout(
+        text: String,
+        alphaImage: CGImage,
+        canvasSize: CGSize,
+        fontSize: CGFloat,
+        lineHeight requestedLineHeight: CGFloat? = nil,
+        sizeCategory: UIContentSizeCategory = .large,
+        checkCancellation: () throws -> Void = { try Task.checkCancellation() }
+    ) throws -> SilhouetteTextLayoutResult {
+        try checkCancellation()
         let resolvedLineHeight = requestedLineHeight ?? fontSize * 1.25
         guard canvasSize.width > 0, canvasSize.height > 0 else { return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, lineHeight: resolvedLineHeight) }
-        let grid = alphaGrid(from: alphaImage)
-        guard let component = largestComponent(in: grid), component.count >= 4 else {
+        let grid = try alphaGrid(from: alphaImage, checkCancellation: checkCancellation)
+        guard let component = try largestComponent(in: grid, checkCancellation: checkCancellation), component.count >= 4 else {
             return fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, lineHeight: resolvedLineHeight)
         }
 
@@ -59,6 +75,7 @@ enum SilhouetteTextLayout {
         let bounds = componentBounds(component, width: grid.width, sx: sx, sy: sy)
         var maxUsableWidth: CGFloat = 0
         for rowSpans in spans.values {
+            try checkCancellation()
             for span in rowSpans {
                 let pixelWidth = span.upperBound - span.lowerBound + 1
                 maxUsableWidth = max(maxUsableWidth, CGFloat(pixelWidth) * sx - inset * 2)
@@ -72,6 +89,7 @@ enum SilhouetteTextLayout {
 
         let path = CGMutablePath()
         for y in spans.keys.sorted() {
+            try checkCancellation()
             for span in spans[y]! {
                 let rect = CGRect(x: CGFloat(span.lowerBound) * sx + inset,
                                   y: CGFloat(y) * sy,
@@ -82,12 +100,13 @@ enum SilhouetteTextLayout {
         }
 
         let lineHeight = resolvedLineHeight
-        let rows = horizontalRows(spans: spans, sx: sx, sy: sy, inset: inset, lineHeight: lineHeight)
+        let rows = try horizontalRows(spans: spans, sx: sx, sy: sy, inset: inset, lineHeight: lineHeight, checkCancellation: checkCancellation)
         let font = CTFontCreateWithName("-apple-system" as CFString, fontSize, nil)
         let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         var index = 0
         var lines: [SilhouetteLine] = []
         for row in rows where index < words.count {
+            try checkCancellation()
             var candidate = words[index]
             var accepted = candidate
             var next = index + 1
@@ -107,7 +126,7 @@ enum SilhouetteTextLayout {
 
     fileprivate struct Grid { let width: Int; let height: Int; let pixels: [UInt8] }
 
-    private static func alphaGrid(from image: CGImage) -> Grid {
+    private static func alphaGrid(from image: CGImage, checkCancellation: () throws -> Void) throws -> Grid {
         let scale = min(1, CGFloat(maximumGridSide) / CGFloat(max(image.width, image.height)))
         let width = max(1, Int((CGFloat(image.width) * scale).rounded()))
         let height = max(1, Int((CGFloat(image.height) * scale).rounded()))
@@ -122,15 +141,20 @@ enum SilhouetteTextLayout {
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
         var alpha = [UInt8](repeating: 0, count: width * height)
-        for index in alpha.indices { alpha[index] = rgba[index * 4 + 3] }
+        for index in alpha.indices {
+            if index.isMultiple(of: 1024) { try checkCancellation() }
+            alpha[index] = rgba[index * 4 + 3]
+        }
         return Grid(width: width, height: height, pixels: alpha)
     }
 
-    private static func largestComponent(in grid: Grid) -> [Int]? {
+    private static func largestComponent(in grid: Grid, checkCancellation: () throws -> Void) throws -> [Int]? {
         var visited = [Bool](repeating: false, count: grid.pixels.count), best: [Int] = []
         for start in grid.pixels.indices where !visited[start] && grid.pixels[start] >= alphaThreshold {
+            try checkCancellation()
             visited[start] = true; var queue = [start], cursor = 0
             while cursor < queue.count {
+                if cursor.isMultiple(of: 256) { try checkCancellation() }
                 let value = queue[cursor]; cursor += 1
                 let x = value % grid.width, y = value / grid.width
                 for (nx, ny) in [(x-1,y), (x+1,y), (x,y-1), (x,y+1)] where nx >= 0 && ny >= 0 && nx < grid.width && ny < grid.height {
@@ -158,10 +182,11 @@ enum SilhouetteTextLayout {
         return result
     }
 
-    private static func horizontalRows(spans: [Int: [ClosedRange<Int>]], sx: CGFloat, sy: CGFloat, inset: CGFloat, lineHeight: CGFloat) -> [CGRect] {
+    private static func horizontalRows(spans: [Int: [ClosedRange<Int>]], sx: CGFloat, sy: CGFloat, inset: CGFloat, lineHeight: CGFloat, checkCancellation: () throws -> Void) throws -> [CGRect] {
         guard let minGridY = spans.keys.min(), let maxGridY = spans.keys.max() else { return [] }
         var result: [CGRect] = [], y = CGFloat(minGridY) * sy + inset
         while y + lineHeight <= CGFloat(maxGridY + 1) * sy - inset {
+            try checkCancellation()
             let firstRow = max(minGridY, Int(floor(y / sy)))
             let lastRow = min(maxGridY, Int(floor((y + lineHeight - 0.001) / sy)))
             var safe = spans[firstRow] ?? []

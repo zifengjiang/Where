@@ -17,6 +17,25 @@ struct SilhouetteTextLayoutTests {
         #expect(accessibility.fontSize > normal.fontSize)
         #expect(accessibility.lineHeight > normal.lineHeight)
     }
+
+    @Test func cancellableLayoutChecksForCancellationInsideBoundedWork() {
+        let image = mask(width: 320, height: 320) { _, _ in 255 }
+        var checks = 0
+        #expect(throws: CancellationError.self) {
+            _ = try SilhouetteTextLayout.cancellableLayout(
+                text: String(repeating: "cancel me ", count: 200),
+                alphaImage: image,
+                canvasSize: CGSize(width: 320, height: 320),
+                fontSize: 14,
+                checkCancellation: {
+                    checks += 1
+                    if checks == 4 { throw CancellationError() }
+                }
+            )
+        }
+        #expect(checks == 4)
+    }
+
     @Test func rectangleInsetsPathAndKeepsLinesInOpaqueRegion() throws {
         let image = mask(width: 100, height: 80) { x, y in x >= 10 && x < 90 && y >= 8 && y < 72 ? 255 : 0 }
         let result = SilhouetteTextLayout.layout(text: "one two three four five six", alphaImage: image, canvasSize: CGSize(width: 200, height: 160), fontSize: 16)

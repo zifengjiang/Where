@@ -104,10 +104,39 @@ struct ItemCardStateTests {
         #expect(model.identity == second)
         #expect(model.result?.path.boundingBox.width == 20)
 
-        async let a = cache.result(for: second) { counter.increment(); return Self.stubResult(width: 30) }
-        async let b = cache.result(for: second) { counter.increment(); return Self.stubResult(width: 30) }
-        _ = await (a, b)
+        model.load(identity: second) { counter.increment(); return Self.stubResult(width: 30) }
+        try? await Task.sleep(for: .milliseconds(30))
         #expect(counter.value == 2)
+    }
+
+    @MainActor @Test func staleComputationIsCancelledBeforeCompletion() async {
+        let model = ItemCardLayoutModel(cache: ItemCardLayoutCache())
+        let old = ItemCardLayoutIdentity(itemID: UUID(), note: "old", size: CGSize(width: 100, height: 100), sizeCategory: .large)
+        let fresh = ItemCardLayoutIdentity(itemID: old.itemID, note: "fresh", size: old.size, sizeCategory: .large)
+        let completed = LockedCounter()
+        model.load(identity: old) {
+            for _ in 0..<100 { try Task.checkCancellation(); try await Task.sleep(for: .milliseconds(5)) }
+            completed.increment(); return Self.stubResult(width: 10)
+        }
+        try? await Task.sleep(for: .milliseconds(20))
+        model.load(identity: fresh) { Self.stubResult(width: 20) }
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(completed.value == 0)
+        #expect(model.identity == fresh)
+        #expect(model.result?.path.boundingBox.width == 20)
+    }
+
+    @Test func cacheEvictsLeastRecentlyUsedAndNeverExceedsCapacity() async {
+        let cache = ItemCardLayoutCache(maxEntries: 2)
+        let ids = (0..<3).map { ItemCardLayoutIdentity(itemID: UUID(), note: "\($0)", size: CGSize(width: 10, height: 10), sizeCategory: .large) }
+        for (index, id) in ids.enumerated() { await cache.insert(Self.stubResult(width: CGFloat(index + 1)), for: id) }
+        #expect(await cache.count == 2)
+        #expect(await cache.value(for: ids[0]) == nil)
+        #expect(await cache.value(for: ids[1]) != nil)
+        _ = await cache.value(for: ids[1])
+        await cache.insert(Self.stubResult(width: 4), for: ids[0])
+        #expect(await cache.value(for: ids[2]) == nil)
+        #expect(await cache.count == 2)
     }
 
     @Test func mapsEveryDynamicTypeSizeAndChangesCacheIdentity() {

@@ -9,14 +9,21 @@ struct ItemCardFaceActivation: Equatable {
     let accessibilityHidden: Bool
 }
 
+enum ItemCardImageIdentity: Hashable, Sendable, ExpressibleByStringLiteral {
+    case object(ObjectIdentifier)
+    case label(String)
+
+    init(stringLiteral value: String) { self = .label(value) }
+}
+
 struct ItemCardLayoutIdentity: Hashable, Sendable {
     let itemID: UUID
     let note: String
-    let imageIdentity: String
+    let imageIdentity: ItemCardImageIdentity
     let size: CGSize
     let sizeCategory: UIContentSizeCategory
 
-    init(itemID: UUID, note: String, imageIdentity: String = "", size: CGSize, sizeCategory: UIContentSizeCategory) {
+    init(itemID: UUID, note: String, imageIdentity: ItemCardImageIdentity = "", size: CGSize, sizeCategory: UIContentSizeCategory) {
         self.itemID = itemID; self.note = note; self.imageIdentity = imageIdentity; self.size = size; self.sizeCategory = sizeCategory
     }
 }
@@ -28,23 +35,41 @@ struct ImmutableCGImage: @unchecked Sendable {
 
 actor ItemCardLayoutCache {
     static let shared = ItemCardLayoutCache()
+    let maxEntries: Int
     private var values: [ItemCardLayoutIdentity: SilhouetteTextLayoutResult] = [:]
-    private var tasks: [ItemCardLayoutIdentity: Task<SilhouetteTextLayoutResult, Never>] = [:]
+    private var recency: [ItemCardLayoutIdentity: UInt64] = [:]
+    private var clock: UInt64 = 0
 
-    func result(for identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async -> SilhouetteTextLayoutResult) async -> SilhouetteTextLayoutResult {
-        if let value = values[identity] { return value }
-        if let task = tasks[identity] { return await task.value }
-        let task = Task { await compute() }
-        tasks[identity] = task
-        let value = await task.value
-        values[identity] = value
-        tasks[identity] = nil
+    init(maxEntries: Int = 32) { self.maxEntries = max(1, maxEntries) }
+
+    var count: Int { values.count }
+
+    func value(for identity: ItemCardLayoutIdentity) -> SilhouetteTextLayoutResult? {
+        guard let value = values[identity] else { return nil }
+        touch(identity)
         return value
     }
 
-    func cancel(_ identity: ItemCardLayoutIdentity) {
-        tasks[identity]?.cancel()
-        tasks[identity] = nil
+    func insert(_ value: SilhouetteTextLayoutResult, for identity: ItemCardLayoutIdentity) {
+        values[identity] = value
+        touch(identity)
+        while values.count > maxEntries, let oldest = recency.min(by: { $0.value < $1.value })?.key {
+            values[oldest] = nil
+            recency[oldest] = nil
+        }
+    }
+
+    func result(for identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async throws -> SilhouetteTextLayoutResult) async throws -> SilhouetteTextLayoutResult {
+        if let value = value(for: identity) { return value }
+        let value = try await compute()
+        try Task.checkCancellation()
+        insert(value, for: identity)
+        return value
+    }
+
+    private func touch(_ identity: ItemCardLayoutIdentity) {
+        clock &+= 1
+        recency[identity] = clock
     }
 }
 
@@ -56,15 +81,20 @@ actor ItemCardLayoutCache {
     private var requestedIdentity: ItemCardLayoutIdentity?
 
     init(cache: ItemCardLayoutCache = .shared) { self.cache = cache }
-    func load(identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async -> SilhouetteTextLayoutResult) {
-        let staleIdentity = requestedIdentity
+    func load(identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async throws -> SilhouetteTextLayoutResult) {
         requestedIdentity = identity
         loadTask?.cancel(); result = nil
         loadTask = Task { [cache] in
-            if let staleIdentity, staleIdentity != identity { await cache.cancel(staleIdentity) }
-            let value = await cache.result(for: identity, compute: compute)
-            guard !Task.isCancelled else { return }
-            self.identity = identity; self.result = value
+            do {
+                let value = try await cache.result(for: identity, compute: compute)
+                try Task.checkCancellation()
+                guard self.requestedIdentity == identity else { return }
+                self.identity = identity; self.result = value
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
         }
     }
     deinit { loadTask?.cancel() }
@@ -150,7 +180,7 @@ struct ItemCardView: View {
         let result = layoutModel.result
         let category = sizeCategory.uiKit
         let metrics = SilhouetteTextLayout.metrics(sizeCategory: category)
-        let imageID = cutoutImage.cgImage.map { String(ObjectIdentifier($0).hashValue) } ?? "missing"
+        let imageID = cutoutImage.cgImage.map { ItemCardImageIdentity.object(ObjectIdentifier($0)) } ?? "missing"
         let hasDateSpace = result.map { !$0.overflowed && ($0.lines.last?.rect.maxY ?? $0.path.boundingBox.minY) + 28 < $0.path.boundingBox.maxY } ?? false
         let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", imageIdentity: imageID, size: size, sizeCategory: category)
         return ZStack(alignment: .bottom) {
@@ -175,10 +205,15 @@ struct ItemCardView: View {
             guard let cgImage = cutoutImage.cgImage else { return }
             let immutable = ImmutableCGImage(cgImage)
             layoutModel.load(identity: identity) {
-                await Task.detached {
-                    SilhouetteTextLayout.layout(text: identity.note, alphaImage: immutable.image, canvasSize: identity.size,
-                                                fontSize: metrics.fontSize, lineHeight: metrics.lineHeight, sizeCategory: category)
-                }.value
+                let work = Task.detached {
+                    try SilhouetteTextLayout.cancellableLayout(text: identity.note, alphaImage: immutable.image, canvasSize: identity.size,
+                                                               fontSize: metrics.fontSize, lineHeight: metrics.lineHeight, sizeCategory: category)
+                }
+                return try await withTaskCancellationHandler {
+                    try await work.value
+                } onCancel: {
+                    work.cancel()
+                }
             }
         }
         .onChange(of: result?.overflowed) { _, _ in state.noteOverflowed = (result?.overflowed ?? false) || !hasDateSpace }
