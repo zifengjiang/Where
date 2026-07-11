@@ -74,6 +74,21 @@ struct SubjectSelectionTests {
         #expect(state.selectedID == "subject")
     }
 
+    @Test func accessibilityCandidatesPreserveDetectionOrderAndDescribeSelection() {
+        var state = SubjectSelectionState(candidates: [
+            candidate("second", x: 0.5, y: 0, width: 0.2, height: 0.2),
+            candidate("first", x: 0, y: 0, width: 0.8, height: 0.8),
+        ])
+        state.select(id: "second")
+
+        let descriptors = state.accessibilityCandidates
+
+        #expect(descriptors.map(\.candidateID) == ["second", "first"])
+        #expect(descriptors.map(\.label) == ["Detected object 1", "Detected object 2"])
+        #expect(descriptors.map(\.isSelected) == [true, false])
+        #expect(descriptors.map(\.value) == ["Selected", "Not selected"])
+    }
+
     @Test @MainActor func segmentationErrorsPassThroughErrorMapping() {
         #expect(SubjectSegmentationService.map(SubjectSegmentationError.noSubjects) == .noSubjects)
     }
@@ -93,5 +108,35 @@ struct SubjectSelectionTests {
     ) -> SubjectCandidate {
         let normalized = CGRect(x: x, y: y, width: width, height: height)
         return SubjectCandidate(id: id, normalizedBounds: normalized, displayBounds: normalized)
+    }
+}
+
+struct SubjectPickerCompletionCoordinatorTests {
+    @Test @MainActor func originalSuppressesLateCutoutCompletion() async {
+        let coordinator = SubjectPickerCompletionCoordinator()
+        let token = coordinator.beginConfirmation()
+        var originalCount = 0
+        var cutoutCount = 0
+
+        if coordinator.claimOriginal() { originalCount += 1 }
+        await Task.yield()
+        if let token, coordinator.claimCutout(token: token) { cutoutCount += 1 }
+
+        #expect(originalCount == 1)
+        #expect(cutoutCount == 0)
+    }
+
+    @Test @MainActor func repeatedTerminalActionsAreClaimedOnlyOnce() {
+        let coordinator = SubjectPickerCompletionCoordinator()
+        var callbackCount = 0
+
+        if coordinator.claimOriginal() { callbackCount += 1 }
+        if coordinator.claimOriginal() { callbackCount += 1 }
+        if let token = coordinator.beginConfirmation(), coordinator.claimCutout(token: token) {
+            callbackCount += 1
+        }
+
+        #expect(callbackCount == 1)
+        #expect(coordinator.isCompleted)
     }
 }

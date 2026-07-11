@@ -57,6 +57,18 @@ struct SubjectSelectionState: Equatable, Sendable {
         if let match { select(id: match.id) }
     }
 
+    var accessibilityCandidates: [SubjectAccessibilityCandidate] {
+        candidates.enumerated().map { index, candidate in
+            let isSelected = candidate.id == selectedID
+            return SubjectAccessibilityCandidate(
+                candidateID: candidate.id,
+                label: String(localized: "Detected object \(index + 1)"),
+                value: isSelected ? String(localized: "Selected") : String(localized: "Not selected"),
+                isSelected: isSelected
+            )
+        }
+    }
+
     private static func defaultID(in candidates: [SubjectCandidate]) -> SubjectCandidate.ID? {
         candidates.sorted {
             let lhsArea = $0.normalizedBounds.width * $0.normalizedBounds.height
@@ -70,6 +82,13 @@ struct SubjectSelectionState: Equatable, Sendable {
         let rhsArea = rhs.normalizedBounds.width * rhs.normalizedBounds.height
         return lhsArea == rhsArea ? lhs.id < rhs.id : lhsArea < rhsArea
     }
+}
+
+struct SubjectAccessibilityCandidate: Equatable, Sendable {
+    let candidateID: SubjectCandidate.ID
+    let label: String
+    let value: String
+    let isSelected: Bool
 }
 
 enum SubjectSegmentationError: Error, Equatable, LocalizedError, Sendable {

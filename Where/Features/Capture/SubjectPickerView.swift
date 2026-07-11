@@ -15,6 +15,7 @@ struct SubjectPickerView: View {
     @State private var isConfirming = false
     @State private var requestID = UUID()
     @State private var confirmationTask: Task<Void, Never>?
+    @State private var completionCoordinator = SubjectPickerCompletionCoordinator()
 
     var body: some View {
         VStack(spacing: 16) {
@@ -47,15 +48,35 @@ struct SubjectPickerView: View {
                 Text("Tap an object to choose its cutout.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(selection.accessibilityCandidates, id: \.candidateID) { descriptor in
+                            Button {
+                                selectCandidate(id: descriptor.candidateID, announcement: descriptor.label)
+                            } label: {
+                                Text(descriptor.label)
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(descriptor.isSelected ? .accentColor : .secondary)
+                            .accessibilityValue(descriptor.value)
+                            .accessibilityAddTraits(descriptor.isSelected ? .isSelected : [])
+                            .disabled(completionCoordinator.isCompleted)
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
             }
 
             HStack {
-                Button("Use original photo") { onUseOriginal(sourceImage) }
+                Button("Use original photo") { useOriginal() }
                     .buttonStyle(.bordered)
+                    .disabled(completionCoordinator.isCompleted)
 
                 Button("Confirm cutout") { confirmCutout() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(selection.selectedID == nil || isConfirming)
+                    .disabled(selection.selectedID == nil || isConfirming || completionCoordinator.isCompleted)
             }
         }
         .padding()
@@ -68,6 +89,7 @@ struct SubjectPickerView: View {
             requestID = UUID()
             confirmationTask?.cancel()
             confirmationTask = nil
+            completionCoordinator.cancelPendingConfirmation()
         }
     }
 
@@ -75,12 +97,33 @@ struct SubjectPickerView: View {
 
     private func selectSubject(_ subject: ImageAnalysisInteraction.Subject) {
         guard let id = analysis?.candidateID(for: subject) else { return }
+        selectCandidate(id: id)
+    }
+
+    private func selectCandidate(id: SubjectCandidate.ID, announcement: String? = nil) {
+        guard !completionCoordinator.isCompleted else { return }
         selection.select(id: id)
+        if let announcement {
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: String(localized: "\(announcement), selected")
+            )
+        }
+    }
+
+    private func useOriginal() {
+        confirmationTask?.cancel()
+        confirmationTask = nil
+        requestID = UUID()
+        isConfirming = false
+        guard completionCoordinator.claimOriginal() else { return }
+        onUseOriginal(sourceImage)
     }
 
     private func loadAnalysis() async {
         let currentRequest = UUID()
         requestID = currentRequest
+        completionCoordinator.reset()
         confirmationTask?.cancel()
         confirmationTask = nil
         isConfirming = false
@@ -109,6 +152,7 @@ struct SubjectPickerView: View {
     private func confirmCutout() {
         guard let analysis, let selectedID = selection.selectedID,
               let candidate = selection.candidates.first(where: { $0.id == selectedID }) else { return }
+        guard let completionToken = completionCoordinator.beginConfirmation() else { return }
         isConfirming = true
         error = nil
         let currentRequest = requestID
@@ -117,7 +161,8 @@ struct SubjectPickerView: View {
             do {
                 let cutout = try await analysis.cutout(for: selectedID)
                 try Task.checkCancellation()
-                guard requestID == currentRequest else { return }
+                guard requestID == currentRequest,
+                      completionCoordinator.claimCutout(token: completionToken) else { return }
                 onConfirmCutout(cutout, candidate)
             } catch is CancellationError {
                 return
@@ -130,6 +175,44 @@ struct SubjectPickerView: View {
             }
             if requestID == currentRequest { isConfirming = false }
         }
+    }
+}
+
+@MainActor
+final class SubjectPickerCompletionCoordinator {
+    private(set) var isCompleted = false
+    private var confirmationToken = UUID()
+
+    func reset() {
+        isCompleted = false
+        confirmationToken = UUID()
+    }
+
+    func beginConfirmation() -> UUID? {
+        guard !isCompleted else { return nil }
+        let token = UUID()
+        confirmationToken = token
+        return token
+    }
+
+    func cancelPendingConfirmation() {
+        confirmationToken = UUID()
+    }
+
+    func claimOriginal() -> Bool {
+        claimCompletion()
+    }
+
+    func claimCutout(token: UUID) -> Bool {
+        guard token == confirmationToken else { return false }
+        return claimCompletion()
+    }
+
+    private func claimCompletion() -> Bool {
+        guard !isCompleted else { return false }
+        isCompleted = true
+        confirmationToken = UUID()
+        return true
     }
 }
 
