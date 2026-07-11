@@ -64,6 +64,32 @@ struct SilhouetteTextLayoutTests {
         #expect(accessibility.usesFallbackCard)
     }
 
+    @Test(arguments: ["u", "donut", "concave"])
+    func pathsAndTextNeverBridgeTransparentGaps(shape: String) {
+        let image = mask(width: 120, height: 120) { x, y in
+            switch shape {
+            case "u": return ((x >= 10 && x < 35) || (x >= 85 && x < 110) || (y >= 85 && x >= 10 && x < 110)) && y >= 10 && y < 110 ? 255 : 0
+            case "donut":
+                let dx = x - 60, dy = y - 60, radius = dx * dx + dy * dy
+                return radius <= 52 * 52 && radius >= 25 * 25 ? 255 : 0
+            default: return (x >= 8 && x < 112 && y >= 8 && y < 112 && !(x >= 42 && y >= 45 && y < 78)) ? 255 : 0
+            }
+        }
+        let canvas = CGSize(width: 240, height: 240)
+        let result = SilhouetteTextLayout.layout(text: String(repeating: "safe words ", count: 60), alphaImage: image, canvasSize: canvas, fontSize: 12)
+
+        if shape == "donut" { #expect(!result.path.contains(CGPoint(x: 120, y: 120))) }
+        for line in result.lines {
+            for y in stride(from: line.rect.minY, through: line.rect.maxY, by: 2) {
+                for x in stride(from: line.rect.minX, through: line.rect.maxX, by: 2) {
+                    let sourceX = min(119, max(0, Int(x / canvas.width * 120)))
+                    let sourceY = min(119, max(0, Int(y / canvas.height * 120)))
+                    #expect(alphaAt(image, x: sourceX, y: sourceY) >= 96)
+                }
+            }
+        }
+    }
+
     private func mask(width: Int, height: Int, alpha: (Int, Int) -> UInt8) -> CGImage {
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
         for y in 0..<height { for x in 0..<width { bytes[(y * width + x) * 4 + 3] = alpha(x, y) } }
@@ -71,5 +97,10 @@ struct SilhouetteTextLayoutTests {
         return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
                        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+    }
+
+    private func alphaAt(_ image: CGImage, x: Int, y: Int) -> UInt8 {
+        let data = image.dataProvider!.data!
+        return CFDataGetBytePtr(data)![y * image.bytesPerRow + x * 4 + 3]
     }
 }

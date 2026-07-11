@@ -2,6 +2,15 @@ import SwiftUI
 
 enum ItemCardSide: Equatable { case front, back }
 enum ItemCardTransition: Equatable { case threeDFlip, opacity }
+enum ItemCardAction: Equatable { case flipCard, fullNote }
+enum ItemCardMetadataPlacement: Equatable { case card, fullNoteFooter }
+
+struct ItemCardLayoutIdentity: Equatable {
+    let itemID: UUID
+    let note: String
+    let size: CGSize
+    let sizeCategory: UIContentSizeCategory
+}
 
 struct ItemCardState: Equatable {
     private(set) var itemID: UUID
@@ -13,8 +22,12 @@ struct ItemCardState: Equatable {
     mutating func flip() { side = side == .front ? .back : .front }
     mutating func select(itemID: UUID) { guard itemID != self.itemID else { return }; self.itemID = itemID; side = .front; isShowingFullNote = false; noteOverflowed = false }
     mutating func showFullNote() { if side == .back && noteOverflowed { isShowingFullNote = true } }
+    mutating func handle(_ action: ItemCardAction) {
+        switch action { case .flipCard: flip(); case .fullNote: showFullNote() }
+    }
     mutating func dismissFullNote() { isShowingFullNote = false }
     static func transition(reduceMotion: Bool) -> ItemCardTransition { reduceMotion ? .opacity : .threeDFlip }
+    static func metadataPlacement(hasCardSpace: Bool) -> ItemCardMetadataPlacement { hasCardSpace ? .card : .fullNoteFooter }
 
     static func createdAtText(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter(); formatter.locale = locale; formatter.timeZone = timeZone
@@ -46,16 +59,17 @@ struct ItemCardView: View {
             }
             .rotation3DEffect(.degrees(!reduceMotion && state.side == .back ? 180 : 0), axis: (0, 1, 0))
             .animation(reduceMotion ? .easeInOut(duration: 0.18) : .spring(duration: 0.45), value: state.side)
-            .contentShape(Rectangle()).onTapGesture { state.flip() }
         }
         .onChange(of: item.id) { _, id in state.select(itemID: id) }
         .sheet(isPresented: Binding(get: { state.isShowingFullNote }, set: { if !$0 { state.dismissFullNote() } })) {
-            NoteEditorView(initialText: item.note ?? "", isReadOnly: onEditNote == nil, onSave: onEditNote ?? { _ in })
+            NoteEditorView(initialText: item.note ?? "", isReadOnly: onEditNote == nil,
+                           footer: ItemCardState.createdAtText(item.createdAt), onSave: onEditNote ?? { _ in })
         }
     }
 
     private var front: some View {
-        Image(uiImage: cutoutImage).resizable().scaledToFit()
+        Button { state.handle(.flipCard) } label: { Image(uiImage: cutoutImage).resizable().scaledToFit() }
+            .buttonStyle(.plain)
             .accessibilityLabel("\(item.name), front")
             .accessibilityHint("Tap to show note")
             .accessibilityAddTraits(.isButton)
@@ -63,18 +77,26 @@ struct ItemCardView: View {
 
     private func back(size: CGSize) -> some View {
         let result = cutoutImage.cgImage.map { SilhouetteTextLayout.layout(text: item.note ?? "", alphaImage: $0, canvasSize: size, fontSize: UIFont.preferredFont(forTextStyle: .body).pointSize, sizeCategory: sizeCategory.uiKit) }
-        return Canvas { context, _ in
-            guard let result else { return }
-            context.fill(Path(result.path), with: .color(Color(red: 0.96, green: 0.90, blue: 0.78)))
-            for line in result.lines { context.draw(Text(line.text).font(.body).foregroundStyle(.black), in: line.rect) }
-            if result.overflowed { context.draw(Text("… More").font(.caption).foregroundStyle(.brown), at: CGPoint(x: result.path.boundingBox.midX, y: result.path.boundingBox.maxY - 12)) }
-            else if (result.lines.last?.rect.maxY ?? result.path.boundingBox.minY) + 28 < result.path.boundingBox.maxY {
-                context.draw(Text(ItemCardState.createdAtText(item.createdAt)).font(.caption2).foregroundStyle(.secondary),
-                             at: CGPoint(x: result.path.boundingBox.midX, y: result.path.boundingBox.maxY - 12))
+        let hasDateSpace = result.map { !$0.overflowed && ($0.lines.last?.rect.maxY ?? $0.path.boundingBox.minY) + 28 < $0.path.boundingBox.maxY } ?? false
+        let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", size: size, sizeCategory: sizeCategory.uiKit)
+        return ZStack(alignment: .bottom) {
+            Canvas { context, _ in
+                guard let result else { return }
+                context.fill(Path(result.path), with: .color(Color(red: 0.96, green: 0.90, blue: 0.78)))
+                for line in result.lines { context.draw(Text(line.text).font(.body).foregroundStyle(.black), in: line.rect) }
+                if hasDateSpace {
+                    context.draw(Text(ItemCardState.createdAtText(item.createdAt)).font(.caption2).foregroundStyle(.secondary),
+                                 at: CGPoint(x: result.path.boundingBox.midX, y: result.path.boundingBox.maxY - 12))
+                }
+            }
+            .contentShape(Rectangle()).onTapGesture { state.handle(.flipCard) }
+            if result?.overflowed == true || !hasDateSpace {
+                Button(result?.overflowed == true ? "… More" : "Details") { state.handle(.fullNote) }
+                    .font(.caption).buttonStyle(.borderedProminent).tint(.brown)
+                    .accessibilityHint("Opens the full note without flipping the card")
             }
         }
-        .onAppear { state.noteOverflowed = result?.overflowed ?? false }
-        .onTapGesture { if state.noteOverflowed { state.showFullNote() } }
+        .task(id: identity) { state.noteOverflowed = (result?.overflowed ?? false) || !hasDateSpace }
         .accessibilityLabel("\(item.name), note: \(item.note ?? "No note"). \(ItemCardState.createdAtText(item.createdAt))")
         .accessibilityHint(result?.overflowed == true ? "Tap to read the full note" : "Tap to show image")
         .accessibilityAddTraits(.isButton)

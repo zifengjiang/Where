@@ -35,14 +35,15 @@ enum SilhouetteTextLayout {
 
         let sx = canvasSize.width / CGFloat(grid.width), sy = canvasSize.height / CGFloat(grid.height)
         let inset = max(4, fontSize * 0.6)
-        var spans: [(y: Int, minX: Int, maxX: Int)] = []
-        let grouped = Dictionary(grouping: component, by: { $0 / grid.width })
-        for y in grouped.keys.sorted() {
-            let xs = grouped[y]!.map { $0 % grid.width }
-            if let low = xs.min(), let high = xs.max() { spans.append((y, low, high)) }
-        }
+        let spans = componentSpans(component: component, gridWidth: grid.width)
         let bounds = componentBounds(component, width: grid.width, sx: sx, sy: sy)
-        let maxUsableWidth = spans.map { CGFloat($0.maxX - $0.minX + 1) * sx - inset * 2 }.max() ?? 0
+        var maxUsableWidth: CGFloat = 0
+        for rowSpans in spans.values {
+            for span in rowSpans {
+                let pixelWidth = span.upperBound - span.lowerBound + 1
+                maxUsableWidth = max(maxUsableWidth, CGFloat(pixelWidth) * sx - inset * 2)
+            }
+        }
         let accessibilityFactor: CGFloat = sizeCategory.isAccessibilityCategory ? 6.2 : 3.2
         let usableArea = CGFloat(component.count) * sx * sy
         guard maxUsableWidth >= fontSize * accessibilityFactor, usableArea >= fontSize * fontSize * 10 else {
@@ -50,16 +51,18 @@ enum SilhouetteTextLayout {
         }
 
         let path = CGMutablePath()
-        for span in spans {
-            let rect = CGRect(x: CGFloat(span.minX) * sx + inset,
-                              y: CGFloat(span.y) * sy,
-                              width: CGFloat(span.maxX - span.minX + 1) * sx - inset * 2,
-                              height: sy)
-            if rect.width > 0, rect.height > 0 { path.addRect(rect) }
+        for y in spans.keys.sorted() {
+            for span in spans[y]! {
+                let rect = CGRect(x: CGFloat(span.lowerBound) * sx + inset,
+                                  y: CGFloat(y) * sy,
+                                  width: CGFloat(span.upperBound - span.lowerBound + 1) * sx - inset * 2,
+                                  height: sy)
+                if rect.width > 0, rect.height > 0 { path.addRect(rect) }
+            }
         }
 
         let lineHeight = fontSize * 1.25
-        let rows = horizontalRows(component: component, gridWidth: grid.width, sx: sx, sy: sy, inset: inset, lineHeight: lineHeight)
+        let rows = horizontalRows(spans: spans, sx: sx, sy: sy, inset: inset, lineHeight: lineHeight)
         let font = CTFontCreateWithName("-apple-system" as CFString, fontSize, nil)
         let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         var index = 0
@@ -120,18 +123,47 @@ enum SilhouetteTextLayout {
         return best.isEmpty ? nil : best
     }
 
-    private static func horizontalRows(component: [Int], gridWidth: Int, sx: CGFloat, sy: CGFloat, inset: CGFloat, lineHeight: CGFloat) -> [CGRect] {
-        let set = Set(component); let maxY = (component.max() ?? 0) / gridWidth
-        var result: [CGRect] = [], y = inset
-        while y + lineHeight <= CGFloat(maxY + 1) * sy - inset {
-            let gridY = min(maxY, max(0, Int((y + lineHeight / 2) / sy)))
-            let xs = set.filter { $0 / gridWidth == gridY }.map { $0 % gridWidth }
-            if let lo = xs.min(), let hi = xs.max() {
-                let rect = CGRect(x: CGFloat(lo) * sx + inset, y: y, width: CGFloat(hi - lo + 1) * sx - inset * 2, height: lineHeight)
+    private static func componentSpans(component: [Int], gridWidth: Int) -> [Int: [ClosedRange<Int>]] {
+        let grouped = Dictionary(grouping: component, by: { $0 / gridWidth })
+        var result: [Int: [ClosedRange<Int>]] = [:]
+        for (y, values) in grouped {
+            let xs = values.map { $0 % gridWidth }.sorted()
+            var spans: [ClosedRange<Int>] = [], start = xs[0], previous = xs[0]
+            for x in xs.dropFirst() {
+                if x > previous + 1 { spans.append(start...previous); start = x }
+                previous = x
+            }
+            spans.append(start...previous); result[y] = spans
+        }
+        return result
+    }
+
+    private static func horizontalRows(spans: [Int: [ClosedRange<Int>]], sx: CGFloat, sy: CGFloat, inset: CGFloat, lineHeight: CGFloat) -> [CGRect] {
+        guard let minGridY = spans.keys.min(), let maxGridY = spans.keys.max() else { return [] }
+        var result: [CGRect] = [], y = CGFloat(minGridY) * sy + inset
+        while y + lineHeight <= CGFloat(maxGridY + 1) * sy - inset {
+            let firstRow = max(minGridY, Int(floor(y / sy)))
+            let lastRow = min(maxGridY, Int(floor((y + lineHeight - 0.001) / sy)))
+            var safe = spans[firstRow] ?? []
+            if lastRow > firstRow {
+                for row in (firstRow + 1)...lastRow { safe = intersect(safe, spans[row] ?? []) }
+            }
+            if let widest = safe.max(by: { $0.count < $1.count }) {
+                let rect = CGRect(x: CGFloat(widest.lowerBound) * sx + inset, y: y,
+                                  width: CGFloat(widest.count) * sx - inset * 2, height: lineHeight)
                 if rect.width > 0 { result.append(rect) }
             }
             y += lineHeight
         }
+        return result
+    }
+
+    private static func intersect(_ lhs: [ClosedRange<Int>], _ rhs: [ClosedRange<Int>]) -> [ClosedRange<Int>] {
+        var result: [ClosedRange<Int>] = []
+        for a in lhs { for b in rhs {
+            let lower = max(a.lowerBound, b.lowerBound), upper = min(a.upperBound, b.upperBound)
+            if lower <= upper { result.append(lower...upper) }
+        } }
         return result
     }
 
