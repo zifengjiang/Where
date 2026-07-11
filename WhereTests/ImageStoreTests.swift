@@ -6,8 +6,47 @@ import UniformTypeIdentifiers
 @testable import Where
 
 struct ImageStoreTests {
+    @Test func initRejectsSymlinkedOwnedDirectories() throws {
+        for component in ["Drafts", "Images"] {
+            let root = temporaryRoot()
+            let external = temporaryRoot()
+            defer { remove(root); remove(external) }
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(at: root.appending(path: component), withDestinationURL: external)
+            #expect(throws: ImageStoreError.self) { try ImageStore(rootDirectory: root) }
+        }
+    }
+
+    @Test func replacingDraftsWithSymlinkRejectsStageAndDiscardWithoutTouchingVictim() async throws {
+        let (store, root) = try makeStore(); defer { remove(root) }
+        let draft = try await store.stageSceneImage(jpeg(width: 10, height: 10))
+        let external = temporaryRoot(); defer { remove(external) }
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        let victim = external.appending(path: draft.relativeName); try Data([42]).write(to: victim)
+        try FileManager.default.removeItem(at: root.appending(path: "Drafts"))
+        try FileManager.default.createSymbolicLink(at: root.appending(path: "Drafts"), withDestinationURL: external)
+        await #expect(throws: ImageStoreError.self) { try await store.stageSceneImage(jpeg(width: 11, height: 11)) }
+        await store.discard([draft])
+        #expect((try Data(contentsOf: victim)) == Data([42]))
+    }
+
+    @Test func replacingImagesWithSymlinkRejectsPromoteDeleteAndCleanupWithoutTouchingVictim() async throws {
+        let (store, root) = try makeStore(); defer { remove(root) }
+        let draft = try await store.stageSceneImage(jpeg(width: 10, height: 10))
+        let external = temporaryRoot(); defer { remove(external) }
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        let victim = external.appending(path: draft.relativeName); try Data([42]).write(to: victim)
+        try FileManager.default.removeItem(at: root.appending(path: "Images"))
+        try FileManager.default.createSymbolicLink(at: root.appending(path: "Images"), withDestinationURL: external)
+        await #expect(throws: ImageStoreError.self) { try await store.promote([draft]) }
+        await #expect(throws: ImageStoreError.self) { try await store.delete(relativePaths: ["Images/\(draft.relativeName)"]) }
+        await #expect(throws: ImageStoreError.self) { try await store.cleanOrphans(referencedPaths: [], olderThan: .now) }
+        #expect((try Data(contentsOf: victim)) == Data([42]))
+    }
+
     @Test func createsDraftDirectoriesAndUniqueDrafts() async throws {
-        let (store, root) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let data = try jpeg(width: 20, height: 10)
         let first = try await store.stageSceneImage(data)
         let second = try await store.stageSceneImage(data)
@@ -17,7 +56,7 @@ struct ImageStoreTests {
     }
 
     @Test func sceneJPEGNormalizesOrientationAndCapsLongestEdge() async throws {
-        let (store, _) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let draft = try await store.stageSceneImage(jpeg(width: 4000, height: 2000, orientation: 6))
         let properties = try imageProperties(draft.url)
         #expect(draft.url.pathExtension == "jpg")
@@ -27,26 +66,30 @@ struct ImageStoreTests {
     }
 
     @Test func appearanceOriginalIsCompressedAndCapped() async throws {
-        let (store, _) = try makeStore()
-        let draft = try await store.stageAppearanceOriginal(jpeg(width: 2400, height: 1200))
+        let (store, root) = try makeStore(); defer { remove(root) }
+        let input = try jpeg(width: 2400, height: 1200, noisy: true)
+        let draft = try await store.stageAppearanceOriginal(input)
         let properties = try imageProperties(draft.url)
         #expect(properties.width == 1600)
         #expect(properties.height == 800)
-        #expect((try Data(contentsOf: draft.url)).count < (try jpeg(width: 2400, height: 1200, noisy: true)).count)
+        #expect((try Data(contentsOf: draft.url)).count < input.count)
     }
 
     @Test func cutoutPersistsPNGWithAlpha() async throws {
-        let (store, _) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let draft = try await store.stageCutout(alphaImage(width: 32, height: 24))
         let source = CGImageSourceCreateWithURL(draft.url as CFURL, nil)!
         let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
         #expect(draft.url.pathExtension == "png")
         #expect(image.width == 32 && image.height == 24)
         #expect(image.alphaInfo != .none && image.alphaInfo != .noneSkipFirst && image.alphaInfo != .noneSkipLast)
+        let alphas = [alphaValue(image, x: 4, y: 12), alphaValue(image, x: 28, y: 12)]
+        #expect(alphas.contains(0))
+        #expect(alphas.contains { (110...145).contains($0) })
     }
 
     @Test func promoteMovesDraftsInInputOrderAndNeverOverwrites() async throws {
-        let (store, root) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let a = try await store.stageSceneImage(jpeg(width: 11, height: 9))
         let b = try await store.stageSceneImage(jpeg(width: 12, height: 8))
         let paths = try await store.promote([b, a])
@@ -65,7 +108,7 @@ struct ImageStoreTests {
     }
 
     @Test func discardIsIdempotentAndDeleteIgnoresMissing() async throws {
-        let (store, root) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let draft = try await store.stageSceneImage(jpeg(width: 10, height: 10))
         await store.discard([draft]); await store.discard([draft])
         #expect(!FileManager.default.fileExists(atPath: draft.url.path))
@@ -75,7 +118,7 @@ struct ImageStoreTests {
     }
 
     @Test func replacementOrderingKeepsOldUntilNewPromotionThenAllowsDeletion() async throws {
-        let (store, root) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let old = try await store.promote([try await store.stageSceneImage(jpeg(width: 10, height: 10))])[0]
         let replacement = try await store.stageSceneImage(jpeg(width: 20, height: 20))
         #expect(FileManager.default.fileExists(atPath: root.appending(path: old).path))
@@ -86,7 +129,7 @@ struct ImageStoreTests {
     }
 
     @Test func orphanCleanupPreservesReferencedAndRecentAndRemovesStaleOwnedFiles() async throws {
-        let (store, root) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let paths = try await store.promote([
             try await store.stageSceneImage(jpeg(width: 10, height: 10)),
             try await store.stageSceneImage(jpeg(width: 11, height: 11)),
@@ -109,7 +152,7 @@ struct ImageStoreTests {
     }
 
     @Test func rejectsAbsoluteTraversalAndForgedDraftPaths() async throws {
-        let (store, root) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         await #expect(throws: ImageStoreError.self) { try await store.delete(relativePaths: ["/tmp/file"]) }
         await #expect(throws: ImageStoreError.self) { try await store.delete(relativePaths: ["Images/../secret"]) }
         await #expect(throws: ImageStoreError.self) { try await store.cleanOrphans(referencedPaths: ["../secret"], olderThan: .now) }
@@ -118,7 +161,7 @@ struct ImageStoreTests {
     }
 
     @Test func concurrentStagingIsIsolated() async throws {
-        let (store, _) = try makeStore()
+        let (store, root) = try makeStore(); defer { remove(root) }
         let data = try jpeg(width: 10, height: 10)
         let drafts = try await withThrowingTaskGroup(of: ImageStore.DraftImage.self) { group in
             for _ in 0..<20 { group.addTask { try await store.stageSceneImage(data) } }
@@ -130,12 +173,20 @@ struct ImageStoreTests {
 }
 
 private func makeStore() throws -> (ImageStore, URL) {
-    let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    let root = temporaryRoot()
     return (try ImageStore(rootDirectory: root), root)
 }
 
+private func temporaryRoot() -> URL {
+    FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+}
+
+private func remove(_ url: URL) {
+    try? FileManager.default.removeItem(at: url)
+}
+
 private func jpeg(width: Int, height: Int, orientation: Int = 1, noisy: Bool = false) throws -> Data {
-    let image = noisy ? alphaImage(width: width, height: height) : solidImage(width: width, height: height)
+    let image = noisy ? texturedImage(width: width, height: height) : solidImage(width: width, height: height)
     let data = NSMutableData()
     let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)!
     CGImageDestinationAddImage(destination, image, [kCGImagePropertyOrientation: orientation, kCGImageDestinationLossyCompressionQuality: 0.98] as CFDictionary)
@@ -153,6 +204,27 @@ private func alphaImage(width: Int, height: Int) -> CGImage {
     let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
     context.clear(CGRect(x: 0, y: 0, width: width, height: height)); context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 0.5)); context.fill(CGRect(x: 0, y: 0, width: width / 2, height: height))
     return context.makeImage()!
+}
+
+private func texturedImage(width: Int, height: Int) -> CGImage {
+    var pixels = [UInt8](repeating: 255, count: width * height * 4)
+    for index in 0..<(width * height) {
+        let value = UInt32(truncatingIfNeeded: index &* 1_664_525 &+ 1_013_904_223)
+        pixels[index * 4] = UInt8(truncatingIfNeeded: value >> 16)
+        pixels[index * 4 + 1] = UInt8(truncatingIfNeeded: value >> 8)
+        pixels[index * 4 + 2] = UInt8(truncatingIfNeeded: value)
+    }
+    let data = Data(pixels) as CFData
+    let provider = CGDataProvider(data: data)!
+    return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue), provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+}
+
+private func alphaValue(_ image: CGImage, x: Int, y: Int) -> UInt8 {
+    var pixel = [UInt8](repeating: 0, count: 4)
+    let context = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.translateBy(x: -CGFloat(x), y: -CGFloat(y))
+    context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    return pixel[3]
 }
 
 private func imageProperties(_ url: URL) throws -> (width: Int, height: Int, orientation: Int) {

@@ -1,4 +1,5 @@
 import CoreGraphics
+import Darwin
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -6,6 +7,7 @@ import UniformTypeIdentifiers
 enum ImageStoreError: Error {
     case invalidImage
     case unsafePath(String)
+    case unsafeStorage(String)
     case destinationExists(String)
     case encodingFailed
     case rollbackIncomplete(recoverableFinalPaths: [String])
@@ -18,17 +20,26 @@ actor ImageStore {
     }
 
     let rootDirectory: URL
+    private let canonicalRootDirectory: URL
     private let draftsDirectory: URL
     private let imagesDirectory: URL
     private let fileManager = FileManager.default
 
     init(rootDirectory: URL) throws {
         let root = rootDirectory.standardizedFileURL
+        try Self.rejectSymlink(at: root)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Self.requireDirectory(at: root)
+        let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
         let drafts = root.appending(path: "Drafts", directoryHint: .isDirectory)
         let images = root.appending(path: "Images", directoryHint: .isDirectory)
+        try Self.rejectSymlink(at: drafts)
+        try Self.rejectSymlink(at: images)
         try FileManager.default.createDirectory(at: drafts, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        try Self.verifyOwnedDirectories(root: root, canonicalRoot: canonicalRoot, drafts: drafts, images: images)
         self.rootDirectory = root
+        self.canonicalRootDirectory = canonicalRoot
         self.draftsDirectory = drafts
         self.imagesDirectory = images
     }
@@ -49,21 +60,27 @@ actor ImageStore {
     }
 
     func promote(_ drafts: [DraftImage]) async throws -> [String] {
+        try verifyOwnedStorage()
         for draft in drafts { try validate(draft) }
         var moved: [(draft: URL, final: URL)] = []
         do {
             for draft in drafts {
+                try verifyOwnedStorage()
                 let final = imagesDirectory.appending(path: draft.relativeName)
                 guard !fileManager.fileExists(atPath: final.path) else {
                     throw ImageStoreError.destinationExists(draft.relativeName)
                 }
+                try verifyOwnedStorage()
                 try fileManager.moveItem(at: draft.url, to: final)
                 moved.append((draft.url, final))
             }
         } catch {
             var recoverableFinalPaths: [String] = []
-            for move in moved.reversed() where fileManager.fileExists(atPath: move.final.path) {
+            for move in moved.reversed() {
                 do {
+                    try verifyOwnedStorage()
+                    guard fileManager.fileExists(atPath: move.final.path) else { continue }
+                    try verifyOwnedStorage()
                     try fileManager.moveItem(at: move.final, to: move.draft)
                 } catch {
                     recoverableFinalPaths.append("Images/\(move.final.lastPathComponent)")
@@ -78,20 +95,27 @@ actor ImageStore {
     }
 
     func discard(_ drafts: [DraftImage]) async {
+        guard (try? verifyOwnedStorage()) != nil else { return }
         for draft in drafts {
             guard (try? validate(draft)) != nil else { continue }
+            guard (try? verifyOwnedStorage()) != nil else { return }
             try? fileManager.removeItem(at: draft.url)
         }
     }
 
     func delete(relativePaths: Set<String>) async throws {
+        try verifyOwnedStorage()
         let urls = try relativePaths.map(finalURL)
-        for url in urls where fileManager.fileExists(atPath: url.path) {
+        for url in urls {
+            try verifyOwnedStorage()
+            guard fileManager.fileExists(atPath: url.path) else { continue }
+            try verifyOwnedStorage()
             try fileManager.removeItem(at: url)
         }
     }
 
     func cleanOrphans(referencedPaths: Set<String>, olderThan: Date) async throws {
+        try verifyOwnedStorage()
         let referenced = Set(try referencedPaths.map { try finalURL($0).standardizedFileURL.path })
         try removeStaleFiles(in: imagesDirectory, olderThan: olderThan) { referenced.contains($0.standardizedFileURL.path) }
         try removeStaleFiles(in: draftsDirectory, olderThan: olderThan) { _ in false }
@@ -115,8 +139,10 @@ actor ImageStore {
     }
 
     private func writeDraft(_ data: Data, extension ext: String) throws -> DraftImage {
+        try verifyOwnedStorage()
         let name = "\(UUID().uuidString).\(ext)"
         let url = draftsDirectory.appending(path: name)
+        try verifyOwnedStorage()
         try data.write(to: url, options: .withoutOverwriting)
         return DraftImage(url: url, relativeName: name)
     }
@@ -154,12 +180,62 @@ actor ImageStore {
     }
 
     private func removeStaleFiles(in directory: URL, olderThan: Date, preserving: (URL) -> Bool) throws {
+        try verifyOwnedStorage()
         let urls = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey], options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants])
         for url in urls {
-            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey])
-            guard values.isRegularFile == true, let modified = values.contentModificationDate,
+            try verifyOwnedStorage()
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey])
+            guard values.isSymbolicLink != true, values.isRegularFile == true, let modified = values.contentModificationDate,
                   modified < olderThan, !preserving(url) else { continue }
+            try verifyOwnedStorage()
             try fileManager.removeItem(at: url)
+        }
+    }
+
+    private func verifyOwnedStorage() throws {
+        try Self.verifyOwnedDirectories(
+            root: rootDirectory,
+            canonicalRoot: canonicalRootDirectory,
+            drafts: draftsDirectory,
+            images: imagesDirectory
+        )
+    }
+
+    nonisolated private static func verifyOwnedDirectories(root: URL, canonicalRoot: URL, drafts: URL, images: URL) throws {
+        try rejectSymlink(at: root)
+        try requireDirectory(at: root)
+        guard root.resolvingSymlinksInPath().standardizedFileURL == canonicalRoot else {
+            throw ImageStoreError.unsafeStorage(root.path)
+        }
+        for directory in [drafts, images] {
+            try rejectSymlink(at: directory)
+            try requireDirectory(at: directory)
+            let resolved = directory.resolvingSymlinksInPath().standardizedFileURL
+            guard resolved.deletingLastPathComponent() == canonicalRoot,
+                  resolved.path == canonicalRoot.appending(path: directory.lastPathComponent).path else {
+                throw ImageStoreError.unsafeStorage(directory.path)
+            }
+        }
+    }
+
+    nonisolated private static func rejectSymlink(at url: URL) throws {
+        var information = stat()
+        let result = url.path.withCString { lstat($0, &information) }
+        if result == -1 {
+            guard errno == ENOENT else { throw ImageStoreError.unsafeStorage(url.path) }
+            return
+        }
+        guard information.st_mode & S_IFMT != S_IFLNK else {
+            throw ImageStoreError.unsafeStorage(url.path)
+        }
+    }
+
+    nonisolated private static func requireDirectory(at url: URL) throws {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            throw ImageStoreError.unsafeStorage(url.path)
+        }
+        guard attributes[.type] as? FileAttributeType == .typeDirectory else {
+            throw ImageStoreError.unsafeStorage(url.path)
         }
     }
 }
