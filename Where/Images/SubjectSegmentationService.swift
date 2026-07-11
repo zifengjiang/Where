@@ -121,6 +121,8 @@ final class SubjectSegmentationAnalysis {
         }
         do {
             return try await interaction.image(for: [subject])
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw SubjectSegmentationService.map(error)
         }
