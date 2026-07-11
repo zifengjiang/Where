@@ -79,7 +79,7 @@ struct AspectFitGeometryTests {
     }
 
     @Test(arguments: [
-        (CGPoint(x: -2, y: 3), CGPoint(x: 0, y: 1)),
+        (CGPoint(x: -2, y: 3), CGPoint(x: 0, y: 100)),
         (CGPoint(x: 0.25, y: 0.75), CGPoint(x: 25, y: 75)),
     ])
     func clampsNormalizedInputToUnitSquare(normalized: CGPoint, expected: CGPoint) {
