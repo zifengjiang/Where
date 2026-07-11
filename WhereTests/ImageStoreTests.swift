@@ -53,7 +53,7 @@ struct ImageStoreTests {
         #expect(paths == ["Images/\(b.relativeName)", "Images/\(a.relativeName)"])
         #expect(!FileManager.default.fileExists(atPath: a.url.path))
         #expect(paths.allSatisfy { FileManager.default.fileExists(atPath: root.appending(path: $0).path) })
-        let forged = DraftImage(url: root.appending(path: "Drafts").appending(path: b.relativeName), relativeName: b.relativeName)
+        let forged = ImageStore.DraftImage(url: root.appending(path: "Drafts").appending(path: b.relativeName), relativeName: b.relativeName)
         try Data([1]).write(to: forged.url)
         await #expect(throws: ImageStoreError.self) { try await store.promote([forged]) }
         #expect((try Data(contentsOf: root.appending(path: paths[0]))) != Data([1]))
@@ -113,14 +113,14 @@ struct ImageStoreTests {
         await #expect(throws: ImageStoreError.self) { try await store.delete(relativePaths: ["/tmp/file"]) }
         await #expect(throws: ImageStoreError.self) { try await store.delete(relativePaths: ["Images/../secret"]) }
         await #expect(throws: ImageStoreError.self) { try await store.cleanOrphans(referencedPaths: ["../secret"], olderThan: .now) }
-        let forged = DraftImage(url: root.appending(path: "Images/evil.jpg"), relativeName: "evil.jpg")
+        let forged = ImageStore.DraftImage(url: root.appending(path: "Images/evil.jpg"), relativeName: "evil.jpg")
         await #expect(throws: ImageStoreError.self) { try await store.promote([forged]) }
     }
 
     @Test func concurrentStagingIsIsolated() async throws {
         let (store, _) = try makeStore()
         let data = try jpeg(width: 10, height: 10)
-        let drafts = try await withThrowingTaskGroup(of: DraftImage.self) { group in
+        let drafts = try await withThrowingTaskGroup(of: ImageStore.DraftImage.self) { group in
             for _ in 0..<20 { group.addTask { try await store.stageSceneImage(data) } }
             return try await group.reduce(into: []) { $0.append($1) }
         }

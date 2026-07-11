@@ -3,11 +3,6 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-struct DraftImage: Sendable {
-    let url: URL
-    let relativeName: String
-}
-
 enum ImageStoreError: Error {
     case invalidImage
     case unsafePath(String)
@@ -17,6 +12,11 @@ enum ImageStoreError: Error {
 }
 
 actor ImageStore {
+    struct DraftImage: Sendable {
+        let url: URL
+        let relativeName: String
+    }
+
     let rootDirectory: URL
     private let draftsDirectory: URL
     private let imagesDirectory: URL
