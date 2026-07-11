@@ -3,7 +3,7 @@ import Foundation
 struct ItemDraft: Sendable, Equatable {
     let id: UUID
     let name: String
-    let locationNote: String
+    let locationNote: String?
     let note: String?
     let normalizedX: Double
     let normalizedY: Double
@@ -16,5 +16,6 @@ struct ItemDraft: Sendable, Equatable {
 struct SceneDraft: Sendable, Equatable {
     let id: UUID
     let name: String
+    let imagePath: String
     let items: [ItemDraft]
 }

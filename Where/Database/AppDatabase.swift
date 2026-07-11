@@ -31,6 +31,7 @@ final class AppDatabase: @unchecked Sendable {
             try db.create(table: "scene") { table in
                 table.column("id", .text).primaryKey()
                 table.column("name", .text).notNull()
+                table.column("imagePath", .text).notNull()
                 table.column("createdAt", .datetime).notNull()
                 table.column("updatedAt", .datetime).notNull()
             }
@@ -40,12 +41,14 @@ final class AppDatabase: @unchecked Sendable {
                 table.column("sceneID", .text).notNull()
                     .references("scene", onDelete: .cascade)
                 table.column("name", .text).notNull()
-                table.column("locationNote", .text).notNull()
+                table.column("locationNote", .text)
                 table.column("appearanceOriginalImagePath", .text)
                 table.column("appearanceCutoutImagePath", .text)
                 table.column("note", .text)
                 table.column("normalizedX", .double).notNull()
+                    .check(sql: "normalizedX BETWEEN 0 AND 1")
                 table.column("normalizedY", .double).notNull()
+                    .check(sql: "normalizedY BETWEEN 0 AND 1")
                 table.column("createdAt", .datetime).notNull()
                 table.column("updatedAt", .datetime).notNull()
             }

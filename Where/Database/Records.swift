@@ -6,6 +6,7 @@ struct SceneRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 
     var id: String
     var name: String
+    var imagePath: String
     var createdAt: Date
     var updatedAt: Date
 }
@@ -16,7 +17,7 @@ struct ItemRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
     var id: String
     var sceneID: String
     var name: String
-    var locationNote: String
+    var locationNote: String?
     var appearanceOriginalImagePath: String?
     var appearanceCutoutImagePath: String?
     var note: String?
