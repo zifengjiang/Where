@@ -38,6 +38,10 @@ enum SilhouetteTextLayout {
         return SilhouetteTextMetrics(fontSize: font.pointSize, lineHeight: font.lineHeight)
     }
 
+    static func fallbackLayout(text: String, canvasSize: CGSize, fontSize: CGFloat, lineHeight: CGFloat) -> SilhouetteTextLayoutResult {
+        fallback(text: text, canvasSize: canvasSize, fontSize: fontSize, lineHeight: lineHeight)
+    }
+
     static func layout(
         text: String,
         alphaImage: CGImage,

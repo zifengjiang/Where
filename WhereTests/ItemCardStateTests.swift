@@ -126,6 +126,37 @@ struct ItemCardStateTests {
         #expect(model.result?.path.boundingBox.width == 20)
     }
 
+    @Test func unresolvedLayoutShowsLoadingWithoutDetails() {
+        let presentation = ItemCardLayoutPresentation(result: nil)
+        #expect(presentation.isLoading)
+        #expect(presentation.detailsTitle == nil)
+        #expect(!presentation.canPresentFullNote)
+    }
+
+    @Test func resolvedOverflowShowsDetailsAndAllowsFullNote() {
+        let presentation = ItemCardLayoutPresentation(result: Self.stubResult(width: 20, overflowed: true))
+        #expect(!presentation.isLoading)
+        #expect(presentation.detailsTitle == "… More")
+        #expect(presentation.canPresentFullNote)
+
+        var state = ItemCardState(itemID: UUID())
+        state.flip()
+        state.noteOverflowed = presentation.canPresentFullNote
+        state.handle(.fullNote)
+        #expect(state.isShowingFullNote)
+    }
+
+    @MainActor @Test func imageWithoutCGImageBackingResolvesFallbackLayout() async {
+        let image = UIImage(ciImage: CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 20, height: 20)))
+        #expect(image.cgImage == nil)
+        let model = ItemCardLayoutModel(cache: ItemCardLayoutCache())
+        let identity = ItemCardLayoutIdentity(itemID: UUID(), note: "fallback note", size: CGSize(width: 120, height: 160), sizeCategory: .large)
+        model.load(identity: identity, alphaImage: image.cgImage, fontSize: 14, lineHeight: 18, sizeCategory: .large)
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(model.result?.usesFallbackCard == true)
+        #expect(model.identity == identity)
+    }
+
     @Test func cacheEvictsLeastRecentlyUsedAndNeverExceedsCapacity() async {
         let cache = ItemCardLayoutCache(maxEntries: 2)
         let ids = (0..<3).map { ItemCardLayoutIdentity(itemID: UUID(), note: "\($0)", size: CGSize(width: 10, height: 10), sizeCategory: .large) }
@@ -155,8 +186,8 @@ struct ItemCardStateTests {
         #expect(small != medium)
     }
 
-    private static func stubResult(width: CGFloat) -> SilhouetteTextLayoutResult {
-        SilhouetteTextLayoutResult(path: CGPath(rect: CGRect(x: 0, y: 0, width: width, height: 10), transform: nil), lines: [], overflowed: false, usesFallbackCard: false)
+    private static func stubResult(width: CGFloat, overflowed: Bool = false) -> SilhouetteTextLayoutResult {
+        SilhouetteTextLayoutResult(path: CGPath(rect: CGRect(x: 0, y: 0, width: width, height: 10), transform: nil), lines: [], overflowed: overflowed, usesFallbackCard: false)
     }
 }
 

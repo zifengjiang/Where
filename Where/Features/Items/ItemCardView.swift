@@ -33,6 +33,25 @@ struct ImmutableCGImage: @unchecked Sendable {
     init(_ image: CGImage) { self.image = image.copy()! }
 }
 
+struct ItemCardLayoutPresentation {
+    let result: SilhouetteTextLayoutResult?
+    let hasDateSpace: Bool
+
+    init(result: SilhouetteTextLayoutResult?) {
+        self.result = result
+        hasDateSpace = result.map {
+            !$0.overflowed && ($0.lines.last?.rect.maxY ?? $0.path.boundingBox.minY) + 28 < $0.path.boundingBox.maxY
+        } ?? false
+    }
+
+    var isLoading: Bool { result == nil }
+    var canPresentFullNote: Bool { result.map { $0.overflowed || !hasDateSpace } ?? false }
+    var detailsTitle: String? {
+        guard let result, canPresentFullNote else { return nil }
+        return result.overflowed ? "… More" : "Details"
+    }
+}
+
 actor ItemCardLayoutCache {
     static let shared = ItemCardLayoutCache()
     let maxEntries: Int
@@ -81,6 +100,31 @@ actor ItemCardLayoutCache {
     private var requestedIdentity: ItemCardLayoutIdentity?
 
     init(cache: ItemCardLayoutCache = .shared) { self.cache = cache }
+
+    func load(identity: ItemCardLayoutIdentity, alphaImage: CGImage?, fontSize: CGFloat, lineHeight: CGFloat,
+              sizeCategory: UIContentSizeCategory) {
+        guard let alphaImage else {
+            load(identity: identity) {
+                SilhouetteTextLayout.fallbackLayout(text: identity.note, canvasSize: identity.size,
+                                                    fontSize: fontSize, lineHeight: lineHeight)
+            }
+            return
+        }
+        let immutable = ImmutableCGImage(alphaImage)
+        load(identity: identity) {
+            let work = Task.detached {
+                try SilhouetteTextLayout.cancellableLayout(text: identity.note, alphaImage: immutable.image,
+                                                           canvasSize: identity.size, fontSize: fontSize,
+                                                           lineHeight: lineHeight, sizeCategory: sizeCategory)
+            }
+            return try await withTaskCancellationHandler {
+                try await work.value
+            } onCancel: {
+                work.cancel()
+            }
+        }
+    }
+
     func load(identity: ItemCardLayoutIdentity, compute: @escaping @Sendable () async throws -> SilhouetteTextLayoutResult) {
         requestedIdentity = identity
         loadTask?.cancel(); result = nil
@@ -178,45 +222,38 @@ struct ItemCardView: View {
 
     private func back(size: CGSize) -> some View {
         let result = layoutModel.result
+        let presentation = ItemCardLayoutPresentation(result: result)
         let category = sizeCategory.uiKit
         let metrics = SilhouetteTextLayout.metrics(sizeCategory: category)
         let imageID = cutoutImage.cgImage.map { ItemCardImageIdentity.object(ObjectIdentifier($0)) } ?? "missing"
-        let hasDateSpace = result.map { !$0.overflowed && ($0.lines.last?.rect.maxY ?? $0.path.boundingBox.minY) + 28 < $0.path.boundingBox.maxY } ?? false
         let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", imageIdentity: imageID, size: size, sizeCategory: category)
         return ZStack(alignment: .bottom) {
             Canvas { context, _ in
                 guard let result else { return }
                 context.fill(Path(result.path), with: .color(Color(red: 0.96, green: 0.90, blue: 0.78)))
                 for line in result.lines { context.draw(Text(line.text).font(.system(size: metrics.fontSize)).foregroundStyle(.black), in: line.rect) }
-                if hasDateSpace {
+                if presentation.hasDateSpace {
                     context.draw(Text(ItemCardState.createdAtText(item.createdAt)).font(.caption2).foregroundStyle(.secondary),
                                  at: CGPoint(x: result.path.boundingBox.midX, y: result.path.boundingBox.maxY - 12))
                 }
             }
             .contentShape(Rectangle()).onTapGesture { state.handle(.flipCard) }
             .accessibilityHint(ItemCardState.accessibilityHint(for: .flipCard, side: .back))
-            if result?.overflowed == true || !hasDateSpace {
-                Button(result?.overflowed == true ? "… More" : "Details") { state.handle(.fullNote) }
+            if presentation.isLoading {
+                ProgressView()
+                    .allowsHitTesting(false)
+                    .accessibilityLabel("Loading note layout")
+            } else if let detailsTitle = presentation.detailsTitle {
+                Button(detailsTitle) { state.handle(.fullNote) }
                     .font(.caption).buttonStyle(.borderedProminent).tint(.brown)
                     .accessibilityHint("Opens the full note without flipping the card")
             }
         }
         .task(id: identity) {
-            guard let cgImage = cutoutImage.cgImage else { return }
-            let immutable = ImmutableCGImage(cgImage)
-            layoutModel.load(identity: identity) {
-                let work = Task.detached {
-                    try SilhouetteTextLayout.cancellableLayout(text: identity.note, alphaImage: immutable.image, canvasSize: identity.size,
-                                                               fontSize: metrics.fontSize, lineHeight: metrics.lineHeight, sizeCategory: category)
-                }
-                return try await withTaskCancellationHandler {
-                    try await work.value
-                } onCancel: {
-                    work.cancel()
-                }
-            }
+            layoutModel.load(identity: identity, alphaImage: cutoutImage.cgImage,
+                             fontSize: metrics.fontSize, lineHeight: metrics.lineHeight, sizeCategory: category)
         }
-        .onChange(of: result?.overflowed) { _, _ in state.noteOverflowed = (result?.overflowed ?? false) || !hasDateSpace }
+        .onChange(of: presentation.canPresentFullNote) { _, canPresent in state.noteOverflowed = canPresent }
         .accessibilityLabel("\(item.name), note: \(item.note ?? "No note"). \(ItemCardState.createdAtText(item.createdAt))")
         .accessibilityHint(ItemCardState.accessibilityHint(for: .flipCard, side: .back))
         .accessibilityAddTraits(.isButton)
