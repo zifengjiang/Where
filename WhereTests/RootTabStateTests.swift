@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Where
 
@@ -69,5 +70,16 @@ struct RootTabStateTests {
             return
         }
         #expect(message == "Storage is unavailable")
+    }
+
+    @Test(arguments: [
+        (TabViewBottomAccessoryPlacement.inline, AddSceneAccessoryPresentation.iconOnly),
+        (.expanded, .labeled),
+    ])
+    func accessoryPresentationAdaptsToPlacement(
+        placement: TabViewBottomAccessoryPlacement,
+        expected: AddSceneAccessoryPresentation
+    ) {
+        #expect(AddSceneAccessoryPresentation.forPlacement(placement) == expected)
     }
 }

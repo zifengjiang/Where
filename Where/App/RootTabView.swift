@@ -6,6 +6,17 @@ enum RootTabSelection: Hashable {
     case items
 }
 
+enum AddSceneAccessoryPresentation: Equatable {
+    case iconOnly
+    case labeled
+
+    static func forPlacement(
+        _ placement: TabViewBottomAccessoryPlacement?
+    ) -> AddSceneAccessoryPresentation {
+        placement == .inline ? .iconOnly : .labeled
+    }
+}
+
 @MainActor
 @Observable
 final class RootTabState {
@@ -51,17 +62,32 @@ struct RootTabView: View {
             }
         }
         .tabViewBottomAccessory {
-            Button(action: state.presentCapture) {
-                Label("添加场景", systemImage: "plus")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.glassProminent)
-            .accessibilityLabel("添加场景")
-            .accessibilityIdentifier("add-scene-button")
+            AddSceneAccessoryButton(action: state.presentCapture)
         }
         .fullScreenCover(isPresented: $state.isPresentingCapture) {
             SceneCapturePlaceholderView()
         }
+    }
+}
+
+private struct AddSceneAccessoryButton: View {
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            switch AddSceneAccessoryPresentation.forPlacement(placement) {
+            case .iconOnly:
+                Label("添加场景", systemImage: "plus")
+                    .labelStyle(.iconOnly)
+            case .labeled:
+                Label("添加场景", systemImage: "plus")
+            }
+        }
+        .buttonStyle(.glassProminent)
+        .accessibilityLabel("添加场景")
+        .accessibilityIdentifier("add-scene-button")
     }
 }
 
