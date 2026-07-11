@@ -9,11 +9,22 @@ protocol ItemRepositoryProtocol: Sendable {
 }
 
 final class ItemRepository: ItemRepositoryProtocol, Sendable {
+    enum ReadQuery: Sendable, Equatable {
+        case items
+        case aliases
+        case tags
+    }
+
     private let database: AppDatabase
+    private let queryDidExecute: @Sendable (ReadQuery) -> Void
     let sceneRepository: SceneRepository
 
-    init(database: AppDatabase) {
+    init(
+        database: AppDatabase,
+        queryDidExecute: @escaping @Sendable (ReadQuery) -> Void = { _ in }
+    ) {
         self.database = database
+        self.queryDidExecute = queryDidExecute
         self.sceneRepository = SceneRepository(database: database)
     }
 
@@ -46,16 +57,18 @@ final class ItemRepository: ItemRepositoryProtocol, Sendable {
 
     func searchItems(query: String) async throws -> [ItemSummary] {
         let normalizedQuery = SearchNormalizer.normalize(query)
+        let queryDidExecute = queryDidExecute
         return try await database.writer.read { db in
-            try Self.fetchItems(db, normalizedQuery: normalizedQuery)
+            try Self.fetchItems(db, normalizedQuery: normalizedQuery, queryDidExecute: queryDidExecute)
         }
     }
 
     func observeItems(query: String) -> AsyncThrowingStream<[ItemSummary], Error> {
         let normalizedQuery = SearchNormalizer.normalize(query)
+        let queryDidExecute = queryDidExecute
         let writer = database.writer
         let observation = ValueObservation.tracking { db in
-            try Self.fetchItems(db, normalizedQuery: normalizedQuery)
+            try Self.fetchItems(db, normalizedQuery: normalizedQuery, queryDidExecute: queryDidExecute)
         }
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -155,48 +168,74 @@ final class ItemRepository: ItemRepositoryProtocol, Sendable {
         let normalizedTags: [String]
     }
 
-    private static func fetchItems(_ db: Database, normalizedQuery: String) throws -> [ItemSummary] {
+    private static func fetchItems(
+        _ db: Database,
+        normalizedQuery: String,
+        queryDidExecute: @Sendable (ReadQuery) -> Void
+    ) throws -> [ItemSummary] {
+        queryDidExecute(.items)
         let rows = try Row.fetchAll(db, sql: """
             SELECT item.*, scene.name AS sceneName, scene.imagePath AS sceneImagePath
             FROM item JOIN scene ON scene.id = item.sceneID
             """)
+
+        queryDidExecute(.aliases)
+        let aliasRows = try Row.fetchAll(db, sql: """
+            SELECT itemID, value, normalizedValue
+            FROM itemAlias
+            ORDER BY itemID, normalizedValue
+            """)
+        var aliasesByItem: [String: [(value: String, normalized: String)]] = [:]
+        for aliasRow in aliasRows {
+            let itemID: String = aliasRow["itemID"]
+            aliasesByItem[itemID, default: []].append((aliasRow["value"], aliasRow["normalizedValue"]))
+        }
+
+        queryDidExecute(.tags)
+        let tagRows = try Row.fetchAll(db, sql: """
+            SELECT itemTag.itemID, tag.name, tag.normalizedName
+            FROM itemTag
+            JOIN tag ON tag.id = itemTag.tagID
+            ORDER BY itemTag.itemID, tag.normalizedName
+            """)
+        var tagsByItem: [String: [(name: String, normalized: String)]] = [:]
+        for tagRow in tagRows {
+            let itemID: String = tagRow["itemID"]
+            tagsByItem[itemID, default: []].append((tagRow["name"], tagRow["normalizedName"]))
+        }
+
         var candidates: [SearchCandidate] = []
         for row in rows {
             let itemID: String = row["id"]
             guard let id = UUID(uuidString: itemID),
                   let sceneID = UUID(uuidString: row["sceneID"] as String) else { continue }
-            let aliasRows = try Row.fetchAll(
-                db, sql: "SELECT value, normalizedValue FROM itemAlias WHERE itemID = ? ORDER BY normalizedValue",
-                arguments: [itemID])
-            let tagRows = try Row.fetchAll(db, sql: """
-                SELECT tag.name, tag.normalizedName FROM tag
-                JOIN itemTag ON itemTag.tagID = tag.id
-                WHERE itemTag.itemID = ? ORDER BY tag.normalizedName
-                """, arguments: [itemID])
+            let aliases = aliasesByItem[itemID] ?? []
+            let tags = tagsByItem[itemID] ?? []
             let name: String = row["name"]
             candidates.append(SearchCandidate(
                 summary: ItemSummary(
                     id: id, sceneID: sceneID, sceneName: row["sceneName"], sceneImagePath: row["sceneImagePath"],
                     name: name, locationNote: row["locationNote"], note: row["note"],
                     normalizedX: row["normalizedX"], normalizedY: row["normalizedY"],
-                    aliases: aliasRows.map { $0["value"] }, tags: tagRows.map { $0["name"] },
+                    aliases: aliases.map(\.value), tags: tags.map(\.name),
                     appearanceOriginalImagePath: row["appearanceOriginalImagePath"],
                     appearanceCutoutImagePath: row["appearanceCutoutImagePath"],
                     createdAt: row["createdAt"], updatedAt: row["updatedAt"]),
                 normalizedName: SearchNormalizer.normalize(name),
-                normalizedAliases: aliasRows.map { $0["normalizedValue"] },
-                normalizedTags: tagRows.map { $0["normalizedName"] }))
+                normalizedAliases: aliases.map(\.normalized),
+                normalizedTags: tags.map(\.normalized)))
         }
-        return candidates
-            .filter { normalizedQuery.isEmpty || rank($0, query: normalizedQuery) != nil }
-            .sorted {
-                let lhsRank = rank($0, query: normalizedQuery) ?? 0
-                let rhsRank = rank($1, query: normalizedQuery) ?? 0
-                if lhsRank != rhsRank { return lhsRank < rhsRank }
-                if $0.summary.updatedAt != $1.summary.updatedAt { return $0.summary.updatedAt > $1.summary.updatedAt }
-                return $0.summary.id.uuidString < $1.summary.id.uuidString
+        return candidates.compactMap { candidate in
+                rank(candidate, query: normalizedQuery).map { (candidate, $0) }
             }
-            .map(\.summary)
+            .sorted {
+                if $0.1 != $1.1 { return $0.1 < $1.1 }
+                if $0.0.summary.updatedAt != $1.0.summary.updatedAt {
+                    return $0.0.summary.updatedAt > $1.0.summary.updatedAt
+                }
+                return $0.0.summary.id.uuidString < $1.0.summary.id.uuidString
+            }
+            .map { $0.0.summary }
     }
 
     private static func rank(_ candidate: SearchCandidate, query: String) -> Int? {

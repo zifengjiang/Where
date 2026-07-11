@@ -44,7 +44,10 @@ final class SceneRepository: SceneRepositoryProtocol, Sendable {
             }
             let rows = try Row.fetchAll(
                 db,
-                sql: "SELECT appearanceOriginalImagePath, appearanceCutoutImagePath FROM item WHERE sceneID = ?",
+                sql: """
+                    SELECT appearanceOriginalImagePath, appearanceCutoutImagePath
+                    FROM item WHERE sceneID = ? ORDER BY id
+                    """,
                 arguments: [id.uuidString])
             let itemPaths = rows.map {
                 DeletedImagePaths(original: $0["appearanceOriginalImagePath"], cutout: $0["appearanceCutoutImagePath"])
@@ -63,8 +66,11 @@ final class SceneRepository: SceneRepositoryProtocol, Sendable {
             LEFT JOIN item ON item.sceneID = scene.id
             GROUP BY scene.id
             ORDER BY scene.updatedAt DESC, scene.id ASC
-            """).compactMap { row in
-                guard let id = UUID(uuidString: row["id"]) else { return nil }
+            """).map { row in
+                let rawID: String = row["id"]
+                guard let id = UUID(uuidString: rawID) else {
+                    throw RepositoryError.invalidIdentifier(rawID)
+                }
                 return SceneSummary(
                     id: id, name: row["name"], imagePath: row["imagePath"], itemCount: row["itemCount"],
                     createdAt: row["createdAt"], updatedAt: row["updatedAt"])
@@ -72,6 +78,7 @@ final class SceneRepository: SceneRepositoryProtocol, Sendable {
     }
 }
 
-enum RepositoryError: Error {
+enum RepositoryError: Error, Equatable {
     case notFound
+    case invalidIdentifier(String)
 }

@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import os
 import Testing
 @testable import Where
 
@@ -160,6 +161,68 @@ struct ItemRepositoryTests {
             }
         }
         #expect(counts == [0, 0, 0, 0, 0])
+    }
+
+    @Test
+    func searchBulkLoadsRelatedDataWithBoundedQueryCount() async throws {
+        let database = try AppDatabase.inMemory()
+        let queryPhases = OSAllocatedUnfairLock(initialState: [ItemRepository.ReadQuery]())
+        let repository = ItemRepository(database: database) { query in
+            queryPhases.withLock { $0.append(query) }
+        }
+        try await repository.saveSceneDraft(sceneDraft(items: [
+            itemDraft(name: "One", aliases: ["first"], tags: ["group"]),
+            itemDraft(id: item2ID, name: "Two", aliases: ["second"], tags: ["group"]),
+            itemDraft(id: item3ID, name: "Three", aliases: ["third"], tags: ["group"]),
+            itemDraft(id: item4ID, name: "Four", aliases: ["fourth"], tags: ["group"]),
+        ]))
+
+        _ = try await repository.searchItems(query: "group")
+
+        #expect(queryPhases.withLock { $0 } == [.items, .aliases, .tags])
+    }
+
+    @Test
+    func sceneObservationThrowsForMalformedSceneIdentifier() async throws {
+        let database = try AppDatabase.inMemory()
+        let repository = SceneRepository(database: database)
+        try await database.writer.write { db in
+            try db.execute(
+                sql: "INSERT INTO scene (id, name, imagePath, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)",
+                arguments: ["not-a-uuid", "Broken", "broken.jpg", Date(), Date()])
+        }
+        var iterator = repository.observeScenes().makeAsyncIterator()
+
+        await #expect(throws: RepositoryError.self) {
+            _ = try await iterator.next()
+        }
+    }
+
+    @Test
+    func sceneDeletionReturnsItemPathsInIdentifierOrder() async throws {
+        let (_, repository) = try makeRepository()
+        try await repository.saveSceneDraft(sceneDraft(items: [
+            itemDraft(id: item2ID, name: "Second", originalPath: "second.jpg"),
+            itemDraft(name: "First", originalPath: "first.jpg"),
+        ]))
+
+        let result = try await repository.sceneRepository.deleteScene(id: sceneID)
+
+        #expect(result.items.map(\.original) == ["first.jpg", "second.jpg"])
+    }
+
+    @Test
+    func cancellingItemObservationFinishesConsumer() async throws {
+        let (_, repository) = try makeRepository()
+        let task = Task {
+            for try await _ in repository.observeItems(query: "") {}
+        }
+        await Task.yield()
+
+        task.cancel()
+
+        try await task.value
+        #expect(task.isCancelled)
     }
 
     private func makeRepository() throws -> (AppDatabase, ItemRepository) {
