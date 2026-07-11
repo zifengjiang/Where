@@ -42,14 +42,7 @@ struct RootTabView: View {
 
         TabView(selection: $state.selection) {
             Tab("场景", systemImage: "photo.on.rectangle", value: .scenes) {
-                NavigationStack {
-                    ContentUnavailableView(
-                        "还没有场景",
-                        systemImage: "photo.on.rectangle",
-                        description: Text("添加一个场景，开始记录物品的位置。")
-                    )
-                    .navigationTitle("场景")
-                }
+                ScenesView(repository: dependencies.sceneRepository, imageStore: dependencies.imageStore)
             }
 
             Tab("所有物品", systemImage: "shippingbox", value: .items) {

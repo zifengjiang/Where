@@ -1,0 +1,35 @@
+import SwiftUI
+import UIKit
+
+struct SceneDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var model: SceneDetailViewModel
+    @State private var image: UIImage?
+    @State private var confirmsDelete = false
+    init(sceneID: UUID, repository: any SceneRepositoryProtocol, imageStore: any SceneImageStoreProtocol) {
+        _model = State(initialValue: SceneDetailViewModel(sceneID: sceneID, repository: repository, imageStore: imageStore))
+    }
+    var body: some View {
+        Group {
+            if model.isLoading { ProgressView("正在载入场景…") }
+            else if let error = model.errorMessage { VStack(spacing: 16) { ContentUnavailableView("无法载入场景", systemImage: "exclamationmark.triangle", description: Text(error)); Button("重试") { Task { await model.load() } }.buttonStyle(.borderedProminent) } }
+            else { detail }
+        }
+        .navigationTitle(model.scene?.name ?? "场景")
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Menu {
+            Button("编辑场景", systemImage: "pencil", action: model.requestEdit)
+            Button("添加物品", systemImage: "plus", action: model.requestAddItem)
+            Button("删除场景", systemImage: "trash", role: .destructive) { confirmsDelete = true }
+        } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("场景操作") } }
+        .task { model.start() }
+        .alert("功能即将推出", isPresented: $model.isPresentingEdit) { Button("好") {} } message: { Text("替换场景照片后，物品标记的位置可能需要调整。编辑功能将在下一步提供。") }
+        .alert("添加物品", isPresented: $model.isPresentingAddItem) { Button("好") {} } message: { Text("添加物品功能将在下一步提供。") }
+        .alert("删除场景？", isPresented: $confirmsDelete) { Button("取消", role: .cancel) {}; Button("删除", role: .destructive) { Task { if await model.deleteScene() { dismiss() } } } } message: { Text("此场景及其中的所有物品都会被永久删除。") }
+        .alert("无法删除", isPresented: Binding(get: { model.deleteErrorMessage != nil }, set: { if !$0 { model.deleteErrorMessage = nil } })) { Button("好") {} } message: { Text(model.deleteErrorMessage ?? "") }
+    }
+    @ViewBuilder private var detail: some View {
+        if let image { ScenePhotoView(image: image, pins: model.pins, selectedItemID: model.selectedItemID, onPinTap: model.selectPin).background(.black) }
+        else { ContentUnavailableView("照片不可用", systemImage: "photo.badge.exclamationmark", description: Text(model.scene?.name ?? "场景信息仍可查看。"))
+            .task(id: model.scene?.imagePath) { if let path = model.scene?.imagePath, let data = await model.imageStore.loadImage(relativePath: path) { image = UIImage(data: data) } } }
+    }
+}

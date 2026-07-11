@@ -3,6 +3,7 @@ import GRDB
 
 protocol SceneRepositoryProtocol: Sendable {
     func observeScenes() -> AsyncThrowingStream<[SceneSummary], Error>
+    func fetchScene(id: UUID) async throws -> SceneDetail
     func deleteScene(id: UUID) async throws -> DeletedSceneImagePaths
 }
 
@@ -55,6 +56,24 @@ final class SceneRepository: SceneRepositoryProtocol, Sendable {
             try db.execute(sql: "DELETE FROM scene WHERE id = ?", arguments: [id.uuidString])
             try db.execute(sql: "DELETE FROM tag WHERE NOT EXISTS (SELECT 1 FROM itemTag WHERE itemTag.tagID = tag.id)")
             return DeletedSceneImagePaths(scene: scenePath, items: itemPaths)
+        }
+    }
+
+    func fetchScene(id: UUID) async throws -> SceneDetail {
+        try await database.writer.read { db in
+            guard let sceneRow = try Row.fetchOne(db, sql: """
+                SELECT scene.*, COUNT(item.id) AS itemCount FROM scene
+                LEFT JOIN item ON item.sceneID = scene.id WHERE scene.id = ? GROUP BY scene.id
+                """, arguments: [id.uuidString]) else { throw RepositoryError.notFound }
+            let rawID: String = sceneRow["id"]
+            guard let sceneID = UUID(uuidString: rawID) else { throw RepositoryError.invalidIdentifier(rawID) }
+            let scene = SceneSummary(id: sceneID, name: sceneRow["name"], imagePath: sceneRow["imagePath"], itemCount: sceneRow["itemCount"], createdAt: sceneRow["createdAt"], updatedAt: sceneRow["updatedAt"])
+            let items = try Row.fetchAll(db, sql: "SELECT * FROM item WHERE sceneID = ? ORDER BY updatedAt DESC, id ASC", arguments: [id.uuidString]).map { row in
+                let rawItemID: String = row["id"]
+                guard let itemID = UUID(uuidString: rawItemID) else { throw RepositoryError.invalidIdentifier(rawItemID) }
+                return ItemSummary(id: itemID, sceneID: sceneID, sceneName: scene.name, sceneImagePath: scene.imagePath, name: row["name"], locationNote: row["locationNote"], note: row["note"], normalizedX: row["normalizedX"], normalizedY: row["normalizedY"], aliases: [], tags: [], appearanceOriginalImagePath: row["appearanceOriginalImagePath"], appearanceCutoutImagePath: row["appearanceCutoutImagePath"], createdAt: row["createdAt"], updatedAt: row["updatedAt"])
+            }
+            return SceneDetail(scene: scene, items: items)
         }
     }
 

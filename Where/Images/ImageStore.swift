@@ -114,6 +114,11 @@ actor ImageStore {
         }
     }
 
+    func loadImage(relativePath: String) async -> Data? {
+        guard let url = try? finalURL(relativePath) else { return nil }
+        return await Task.detached(priority: .utility) { try? Data(contentsOf: url, options: .mappedIfSafe) }.value
+    }
+
     func cleanOrphans(referencedPaths: Set<String>, olderThan: Date) async throws {
         try verifyOwnedStorage()
         let referenced = Set(try referencedPaths.map { try finalURL($0).standardizedFileURL.path })
@@ -238,4 +243,13 @@ actor ImageStore {
             throw ImageStoreError.unsafeStorage(url.path)
         }
     }
+}
+
+protocol SceneImageStoreProtocol: Sendable {
+    func loadImage(relativePath: String) async -> Data?
+    func delete(relativePaths: [String]) async throws
+}
+
+extension ImageStore: SceneImageStoreProtocol {
+    func delete(relativePaths: [String]) async throws { try await delete(relativePaths: Set(relativePaths)) }
 }

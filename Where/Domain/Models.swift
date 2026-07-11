@@ -47,6 +47,11 @@ struct SceneSummary: Sendable, Equatable {
     let updatedAt: Date
 }
 
+struct SceneDetail: Sendable, Equatable {
+    let scene: SceneSummary
+    let items: [ItemSummary]
+}
+
 struct DeletedImagePaths: Sendable, Equatable {
     let original: String?
     let cutout: String?

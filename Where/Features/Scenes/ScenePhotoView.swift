@@ -45,6 +45,7 @@ struct ScenePhotoView: View {
     let pins: [ScenePin]
     let selectedItemID: UUID?
     var onImageTap: ((CGPoint) -> Void)?
+    var onPinTap: ((UUID) -> Void)?
 
     var body: some View {
         GeometryReader { proxy in
@@ -58,7 +59,8 @@ struct ScenePhotoView: View {
                     .accessibilityHidden(true)
 
                 ForEach(pins) { pin in
-                    marker(for: pin, selected: pin.id == selectedItemID)
+                    Button { onPinTap?(pin.id) } label: { marker(for: pin, selected: pin.id == selectedItemID) }
+                        .buttonStyle(.plain)
                         .position(geometry.viewPoint(for: pin.normalizedPoint))
                 }
             }
