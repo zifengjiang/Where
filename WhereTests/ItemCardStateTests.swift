@@ -63,10 +63,25 @@ struct ItemCardStateTests {
 
     @Test func layoutIdentityTracksGeometryNoteAndDynamicType() {
         let id = UUID()
-        let base = ItemCardLayoutIdentity(itemID: id, note: "a", size: CGSize(width: 200, height: 300), sizeCategory: .large)
-        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "b", size: base.size, sizeCategory: .large))
-        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "a", size: CGSize(width: 201, height: 300), sizeCategory: .large))
-        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "a", size: base.size, sizeCategory: .accessibilityLarge))
+        let base = ItemCardLayoutIdentity(itemID: id, note: "a", imageRevision: "cutout-v1", size: CGSize(width: 200, height: 300), sizeCategory: .large)
+        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "b", imageRevision: "cutout-v1", size: base.size, sizeCategory: .large))
+        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "a", imageRevision: "cutout-v1", size: CGSize(width: 201, height: 300), sizeCategory: .large))
+        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "a", imageRevision: "cutout-v1", size: base.size, sizeCategory: .accessibilityLarge))
+        #expect(base != ItemCardLayoutIdentity(itemID: id, note: "a", imageRevision: "cutout-v2", size: base.size, sizeCategory: .large))
+    }
+
+    @Test func stableImageRevisionSeparatesAndReusesCacheEntries() async throws {
+        let cache = ItemCardLayoutCache()
+        let itemID = UUID(), size = CGSize(width: 100, height: 100)
+        let first = ItemCardLayoutIdentity(itemID: itemID, note: "note", imageRevision: "cutout-v1", size: size, sizeCategory: .large)
+        let second = ItemCardLayoutIdentity(itemID: itemID, note: "note", imageRevision: "cutout-v2", size: size, sizeCategory: .large)
+        let counter = LockedCounter()
+        _ = try await cache.result(for: first) { counter.increment(); return Self.stubResult(width: 10) }
+        _ = try await cache.result(for: second) { counter.increment(); return Self.stubResult(width: 20) }
+        _ = try await cache.result(for: first) { counter.increment(); return Self.stubResult(width: 30) }
+        #expect(counter.value == 2)
+        #expect(await cache.value(for: first)?.path.boundingBox.width == 10)
+        #expect(await cache.value(for: second)?.path.boundingBox.width == 20)
     }
 
     @Test func recordedTimeRoutesToFullNoteFooterWhenCardHasNoSpace() {
@@ -91,8 +106,8 @@ struct ItemCardStateTests {
     @MainActor @Test func cacheComputesOncePerIdentityAndDropsStalePublication() async {
         let cache = ItemCardLayoutCache()
         let model = ItemCardLayoutModel(cache: cache)
-        let first = ItemCardLayoutIdentity(itemID: UUID(), note: "old", imageIdentity: "one", size: CGSize(width: 100, height: 100), sizeCategory: .large)
-        let second = ItemCardLayoutIdentity(itemID: first.itemID, note: "new", imageIdentity: "one", size: first.size, sizeCategory: .large)
+        let first = ItemCardLayoutIdentity(itemID: UUID(), note: "old", imageRevision: "one", size: CGSize(width: 100, height: 100), sizeCategory: .large)
+        let second = ItemCardLayoutIdentity(itemID: first.itemID, note: "new", imageRevision: "one", size: first.size, sizeCategory: .large)
         let counter = LockedCounter()
         model.load(identity: first) {
             counter.increment(); try? await Task.sleep(for: .milliseconds(80)); return Self.stubResult(width: 10)
@@ -111,8 +126,8 @@ struct ItemCardStateTests {
 
     @MainActor @Test func staleComputationIsCancelledBeforeCompletion() async {
         let model = ItemCardLayoutModel(cache: ItemCardLayoutCache())
-        let old = ItemCardLayoutIdentity(itemID: UUID(), note: "old", size: CGSize(width: 100, height: 100), sizeCategory: .large)
-        let fresh = ItemCardLayoutIdentity(itemID: old.itemID, note: "fresh", size: old.size, sizeCategory: .large)
+        let old = ItemCardLayoutIdentity(itemID: UUID(), note: "old", imageRevision: "one", size: CGSize(width: 100, height: 100), sizeCategory: .large)
+        let fresh = ItemCardLayoutIdentity(itemID: old.itemID, note: "fresh", imageRevision: "one", size: old.size, sizeCategory: .large)
         let completed = LockedCounter()
         model.load(identity: old) {
             for _ in 0..<100 { try Task.checkCancellation(); try await Task.sleep(for: .milliseconds(5)) }
@@ -150,16 +165,31 @@ struct ItemCardStateTests {
         let image = UIImage(ciImage: CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 20, height: 20)))
         #expect(image.cgImage == nil)
         let model = ItemCardLayoutModel(cache: ItemCardLayoutCache())
-        let identity = ItemCardLayoutIdentity(itemID: UUID(), note: "fallback note", size: CGSize(width: 120, height: 160), sizeCategory: .large)
+        let identity = ItemCardLayoutIdentity(itemID: UUID(), note: "fallback note", imageRevision: "ci-v1", size: CGSize(width: 120, height: 160), sizeCategory: .large)
         model.load(identity: identity, alphaImage: image.cgImage, fontSize: 14, lineHeight: 18, sizeCategory: .large)
         try? await Task.sleep(for: .milliseconds(30))
         #expect(model.result?.usesFallbackCard == true)
         #expect(model.identity == identity)
     }
 
+    @MainActor @Test func nilCGImagesWithDifferentStableRevisionsDoNotCollide() async {
+        let cache = ItemCardLayoutCache()
+        let model = ItemCardLayoutModel(cache: cache)
+        let itemID = UUID(), size = CGSize(width: 120, height: 160)
+        let first = ItemCardLayoutIdentity(itemID: itemID, note: "fallback", imageRevision: "ci-v1", size: size, sizeCategory: .large)
+        let second = ItemCardLayoutIdentity(itemID: itemID, note: "fallback", imageRevision: "ci-v2", size: size, sizeCategory: .large)
+        model.load(identity: first, alphaImage: nil, fontSize: 14, lineHeight: 18, sizeCategory: .large)
+        try? await Task.sleep(for: .milliseconds(30))
+        model.load(identity: second, alphaImage: nil, fontSize: 14, lineHeight: 18, sizeCategory: .large)
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(await cache.count == 2)
+        #expect(await cache.value(for: first) != nil)
+        #expect(await cache.value(for: second) != nil)
+    }
+
     @Test func cacheEvictsLeastRecentlyUsedAndNeverExceedsCapacity() async {
         let cache = ItemCardLayoutCache(maxEntries: 2)
-        let ids = (0..<3).map { ItemCardLayoutIdentity(itemID: UUID(), note: "\($0)", size: CGSize(width: 10, height: 10), sizeCategory: .large) }
+        let ids = (0..<3).map { ItemCardLayoutIdentity(itemID: UUID(), note: "\($0)", imageRevision: "revision-\($0)", size: CGSize(width: 10, height: 10), sizeCategory: .large) }
         for (index, id) in ids.enumerated() { await cache.insert(Self.stubResult(width: CGFloat(index + 1)), for: id) }
         #expect(await cache.count == 2)
         #expect(await cache.value(for: ids[0]) == nil)
@@ -181,8 +211,8 @@ struct ItemCardStateTests {
         for (swiftUI, uiKit) in cases { #expect(swiftUI.uiKit == uiKit) }
 
         let id = UUID(), size = CGSize(width: 200, height: 200)
-        let small = ItemCardLayoutIdentity(itemID: id, note: "note", size: size, sizeCategory: ContentSizeCategory.small.uiKit)
-        let medium = ItemCardLayoutIdentity(itemID: id, note: "note", size: size, sizeCategory: ContentSizeCategory.medium.uiKit)
+        let small = ItemCardLayoutIdentity(itemID: id, note: "note", imageRevision: "one", size: size, sizeCategory: ContentSizeCategory.small.uiKit)
+        let medium = ItemCardLayoutIdentity(itemID: id, note: "note", imageRevision: "one", size: size, sizeCategory: ContentSizeCategory.medium.uiKit)
         #expect(small != medium)
     }
 

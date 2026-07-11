@@ -9,22 +9,15 @@ struct ItemCardFaceActivation: Equatable {
     let accessibilityHidden: Bool
 }
 
-enum ItemCardImageIdentity: Hashable, Sendable, ExpressibleByStringLiteral {
-    case object(ObjectIdentifier)
-    case label(String)
-
-    init(stringLiteral value: String) { self = .label(value) }
-}
-
 struct ItemCardLayoutIdentity: Hashable, Sendable {
     let itemID: UUID
     let note: String
-    let imageIdentity: ItemCardImageIdentity
+    let imageRevision: String
     let size: CGSize
     let sizeCategory: UIContentSizeCategory
 
-    init(itemID: UUID, note: String, imageIdentity: ItemCardImageIdentity = "", size: CGSize, sizeCategory: UIContentSizeCategory) {
-        self.itemID = itemID; self.note = note; self.imageIdentity = imageIdentity; self.size = size; self.sizeCategory = sizeCategory
+    init(itemID: UUID, note: String, imageRevision: String, size: CGSize, sizeCategory: UIContentSizeCategory) {
+        self.itemID = itemID; self.note = note; self.imageRevision = imageRevision; self.size = size; self.sizeCategory = sizeCategory
     }
 }
 
@@ -178,14 +171,15 @@ struct ItemCardState: Equatable {
 struct ItemCardView: View {
     let item: ItemSummary
     let cutoutImage: UIImage
+    let imageRevision: String
     var onEditNote: ((String) -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sizeCategory) private var sizeCategory
     @State private var state: ItemCardState
     @StateObject private var layoutModel = ItemCardLayoutModel()
 
-    init(item: ItemSummary, cutoutImage: UIImage, onEditNote: ((String) -> Void)? = nil) {
-        self.item = item; self.cutoutImage = cutoutImage; self.onEditNote = onEditNote
+    init(item: ItemSummary, cutoutImage: UIImage, imageRevision: String, onEditNote: ((String) -> Void)? = nil) {
+        self.item = item; self.cutoutImage = cutoutImage; self.imageRevision = imageRevision; self.onEditNote = onEditNote
         _state = State(initialValue: ItemCardState(itemID: item.id))
     }
 
@@ -225,8 +219,8 @@ struct ItemCardView: View {
         let presentation = ItemCardLayoutPresentation(result: result)
         let category = sizeCategory.uiKit
         let metrics = SilhouetteTextLayout.metrics(sizeCategory: category)
-        let imageID = cutoutImage.cgImage.map { ItemCardImageIdentity.object(ObjectIdentifier($0)) } ?? "missing"
-        let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", imageIdentity: imageID, size: size, sizeCategory: category)
+        let identity = ItemCardLayoutIdentity(itemID: item.id, note: item.note ?? "", imageRevision: imageRevision,
+                                              size: size, sizeCategory: category)
         return ZStack(alignment: .bottom) {
             Canvas { context, _ in
                 guard let result else { return }
