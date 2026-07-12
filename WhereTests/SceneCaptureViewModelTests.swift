@@ -145,6 +145,28 @@ struct SceneCaptureViewModelTests {
 		#expect(harness.model.didFinish)
 	}
 
+	@Test func cancelBlocksCleanupUntilPendingDatabaseCompensationSucceeds() async throws {
+		let harness = try CaptureHarness(rollbackFailures: 2)
+		try await harness.stageScene()
+		harness.model.sceneName = "厨房"
+		let name = try #require(harness.model.sceneImageDraft?.relativeName)
+		let draftURL = harness.root.appending(path: "Drafts/\(name)")
+		try Data([1]).write(to: harness.root.appending(path: "Images/\(name)"))
+
+		await harness.model.finish()
+		#expect(harness.model.hasCommittedGraphPendingCompensation)
+		#expect(FileManager.default.fileExists(atPath: draftURL.path))
+		#expect(await harness.model.cancel() == false)
+		#expect(harness.model.hasCommittedGraphPendingCompensation)
+		#expect(harness.model.saveErrorMessage?.contains("无法取消") == true)
+		#expect(FileManager.default.fileExists(atPath: draftURL.path))
+
+		#expect(await harness.model.cancel())
+		#expect(harness.model.hasCommittedGraphPendingCompensation == false)
+		#expect(FileManager.default.fileExists(atPath: draftURL.path) == false)
+		#expect(await harness.repository.rollbackCount == 3)
+	}
+
 	@Test func appearanceFailureIsActionableAndDoesNotLosePendingItem() throws {
 		let harness = try CaptureHarness()
 		harness.model.beginItem(atNormalizedPoint: CGPoint(x: 0.5, y: 0.5))
@@ -190,10 +212,15 @@ private actor CaptureRepositorySpy: @preconcurrency ItemRepositoryProtocol {
 	private(set) var rollbackCount = 0
 	private(set) var saveObservedDraftFilesOnly = false
 	private let root: URL
+	private var rollbackFailuresRemaining: Int
     private var savingContinuation: CheckedContinuation<Void, Never>?
     private var resumeContinuation: CheckedContinuation<Void, Never>?
 
-	init(behavior: Behavior, root: URL) { self.behavior = behavior; self.root = root }
+	init(behavior: Behavior, root: URL, rollbackFailures: Int) {
+		self.behavior = behavior
+		self.root = root
+		rollbackFailuresRemaining = rollbackFailures
+	}
 
     func saveSceneDraft(_ draft: SceneDraft) async throws {
         saveCount += 1
@@ -215,7 +242,13 @@ private actor CaptureRepositorySpy: @preconcurrency ItemRepositoryProtocol {
             behavior = .succeed
         }
     }
-	func rollbackSceneDraft(id: UUID) async throws { rollbackCount += 1 }
+	func rollbackSceneDraft(id: UUID) async throws {
+		rollbackCount += 1
+		if rollbackFailuresRemaining > 0 {
+			rollbackFailuresRemaining -= 1
+			throw Failure.forced
+		}
+	}
 
     func waitUntilSaving() async {
         if saveCount > 0 { return }
@@ -234,10 +267,10 @@ private final class CaptureHarness {
 	let root: URL
 	private let imageStore: ImageStore
 
-    init(saveBehavior: CaptureRepositorySpy.Behavior = .succeed) throws {
+	init(saveBehavior: CaptureRepositorySpy.Behavior = .succeed, rollbackFailures: Int = 0) throws {
 		root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         imageStore = try ImageStore(rootDirectory: root)
-		repository = CaptureRepositorySpy(behavior: saveBehavior, root: root)
+		repository = CaptureRepositorySpy(behavior: saveBehavior, root: root, rollbackFailures: rollbackFailures)
         model = SceneCaptureViewModel(repository: repository, imageStore: imageStore)
     }
 

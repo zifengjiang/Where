@@ -36,7 +36,7 @@ struct SceneDraftView: View {
                 ToolbarItem(placement: .cancellationAction) { cancelButton }
             }
         }
-        .interactiveDismissDisabled(model.isSaving)
+		.interactiveDismissDisabled(model.isSaving || model.hasCommittedGraphPendingCompensation)
         .confirmationDialog("选择场景照片", isPresented: $isShowingSourceChoices, titleVisibility: .visible) {
             Button("拍照") { requestCamera() }
             PhotosPicker(selection: $photoItem, matching: .images) { Text("从相册选择") }
@@ -99,7 +99,9 @@ struct SceneDraftView: View {
 
     private var cancelButton: some View {
         Button("取消") {
-            Task { await model.cancel(); dismiss() }
+			Task {
+				if await model.cancel() { dismiss() }
+			}
         }
         .disabled(model.isSaving)
     }

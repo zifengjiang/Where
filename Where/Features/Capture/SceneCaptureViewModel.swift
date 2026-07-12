@@ -63,6 +63,7 @@ final class SceneCaptureViewModel {
     private(set) var isSaving = false
     private(set) var isProcessingImage = false
     private(set) var didFinish = false
+	private(set) var hasCommittedGraphPendingCompensation = false
 
     var hasStagedImages: Bool { !allDraftImages.isEmpty }
 	var stagedImageCount: Int { allDraftImages.count }
@@ -235,8 +236,10 @@ final class SceneCaptureViewModel {
 		)
         do {
 			try await repository.saveSceneDraft(databaseDraft)
+			hasCommittedGraphPendingCompensation = true
             do {
 				_ = try await imageStore.promote(staged)
+				hasCommittedGraphPendingCompensation = false
                 didFinish = true
                 self.sceneImageDraft = nil
                 for index in items.indices {
@@ -245,10 +248,11 @@ final class SceneCaptureViewModel {
                 }
             } catch {
 				let promotionError = error
-                do {
+				do {
 					try await repository.rollbackSceneDraft(id: sceneID)
+					hasCommittedGraphPendingCompensation = false
 				} catch {
-					saveErrorMessage = "图片整理失败，数据库补偿也未完成。草稿仍保留，请重试；若问题持续请取消后重新录入。"
+					saveErrorMessage = "图片整理失败，数据库补偿也未完成。草稿和已提交记录均已保留；请重试保存，或取消以再次尝试安全清理。"
                     isSaving = false
                     return
                 }
@@ -260,12 +264,23 @@ final class SceneCaptureViewModel {
         isSaving = false
     }
 
-    func cancel() async {
-        guard !isSaving else { return }
+	@discardableResult
+    func cancel() async -> Bool {
+		guard !isSaving else { return false }
+		if hasCommittedGraphPendingCompensation {
+			do {
+				try await repository.rollbackSceneDraft(id: sceneID)
+				hasCommittedGraphPendingCompensation = false
+			} catch {
+				saveErrorMessage = "暂时无法取消：已提交记录尚未安全清理。草稿仍完整保留，请稍后重试取消或重新保存。\n\(error.localizedDescription)"
+				return false
+			}
+		}
         await imageStore.discard(allDraftImages)
         sceneImageDraft = nil
         items.removeAll()
         pendingItem = nil
+		return true
     }
 
     private var allDraftImages: [ImageStore.DraftImage] {
