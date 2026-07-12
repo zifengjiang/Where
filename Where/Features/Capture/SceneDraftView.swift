@@ -7,14 +7,22 @@ enum CaptureCanvasPolicy {
     static let fieldSurfaceAssetName = "WhereSurface"
 }
 
+enum CaptureInitialDestination: Equatable { case camera, photos, permissionRecovery }
+enum CaptureInitialSource {
+    static func destination(for state: CameraAccessState) -> CaptureInitialDestination {
+        switch state { case .available: .camera; case .unavailable: .photos; case .denied: .permissionRecovery }
+    }
+}
+
 struct SceneDraftView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: SceneCaptureViewModel
     @State private var photoItem: PhotosPickerItem?
-    @State private var isShowingSourceChoices = true
+    @State private var isShowingPhotoLibrary = false
     @State private var isShowingCamera = false
     @State private var isShowingCameraAlert = false
     @State private var cameraState: CameraAccessState = .available
+    @State private var didPresentInitialSource = false
 
     init(repository: any ItemRepositoryProtocol, imageStore: ImageStore) {
         _model = State(initialValue: SceneCaptureViewModel(repository: repository, imageStore: imageStore))
@@ -44,22 +52,25 @@ struct SceneDraftView: View {
         }
 		.interactiveDismissDisabled(model.isSaving || model.hasCommittedGraphPendingCompensation)
         .background(WhereTheme.canvas.ignoresSafeArea())
-        .confirmationDialog("选择场景照片", isPresented: $isShowingSourceChoices, titleVisibility: .visible) {
-            Button("拍照") { requestCamera() }
-            PhotosPicker(selection: $photoItem, matching: .images) { Text("从相册选择") }
-            Button("取消", role: .cancel) {}
-        }
+        .task { await presentInitialSourceIfNeeded() }
+        .photosPicker(isPresented: $isShowingPhotoLibrary, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in load(item) }
         .fullScreenCover(isPresented: $isShowingCamera) {
             CameraPicker { image in
                 isShowingCamera = false
                 load(image)
-            } onCancel: { isShowingCamera = false }
+            } onCancel: { isShowingCamera = false } onChooseLibrary: {
+                isShowingCamera = false
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(250))
+                    isShowingPhotoLibrary = true
+                }
+            }
             .ignoresSafeArea()
         }
         .alert("无法使用相机", isPresented: $isShowingCameraAlert) {
             if cameraState == .denied { Button("打开设置") { SystemSettings.openAppSettings() } }
-            PhotosPicker(selection: $photoItem, matching: .images) { Text("改从相册选择") }
+            Button("改从相册选择") { isShowingPhotoLibrary = true }
             Button("取消", role: .cancel) {}
         } message: {
             Text(cameraState == .unavailable ? "这台设备没有可用的相机。" : "请允许 Where 使用相机。照片只用于记录家中物品，并保存在此设备上。")
@@ -70,7 +81,7 @@ struct SceneDraftView: View {
         @Bindable var model = model
         return ScrollView {
             VStack(spacing: 20) {
-                Button { isShowingSourceChoices = true } label: {
+                Button { requestCamera() } label: {
                     ZStack(alignment: .bottomTrailing) {
                         if let image = model.sceneImage {
                             Image(uiImage: image).resizable().scaledToFit()
@@ -86,6 +97,8 @@ struct SceneDraftView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(model.sceneImage == nil ? "选择场景照片" : "更换场景照片")
+                Button("从相册选择") { isShowingPhotoLibrary = true }
+                    .buttonStyle(.glass).frame(minHeight: 44)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("场景名称").font(.headline)
@@ -129,7 +142,22 @@ struct SceneDraftView: View {
     private func requestCamera() {
         Task {
             cameraState = await CameraPicker.requestAccess()
-            if cameraState == .available { isShowingCamera = true } else { isShowingCameraAlert = true }
+            switch CaptureInitialSource.destination(for: cameraState) {
+            case .camera: isShowingCamera = true
+            case .photos: isShowingPhotoLibrary = true
+            case .permissionRecovery: isShowingCameraAlert = true
+            }
+        }
+    }
+
+    private func presentInitialSourceIfNeeded() async {
+        guard !didPresentInitialSource else { return }
+        didPresentInitialSource = true
+        cameraState = await CameraPicker.requestAccess()
+        switch CaptureInitialSource.destination(for: cameraState) {
+        case .camera: isShowingCamera = true
+        case .photos: isShowingPhotoLibrary = true
+        case .permissionRecovery: isShowingCameraAlert = true
         }
     }
 

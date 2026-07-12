@@ -8,9 +8,15 @@ enum CameraAccessState: Equatable {
     case unavailable
 }
 
+enum CameraPickerAction {
+    case library
+    var accessibilityLabel: String { "从相册选择" }
+}
+
 struct CameraPicker: UIViewControllerRepresentable {
     let onImage: (UIImage) -> Void
     let onCancel: () -> Void
+    var onChooseLibrary: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -19,6 +25,21 @@ struct CameraPicker: UIViewControllerRepresentable {
         picker.sourceType = .camera
         picker.cameraCaptureMode = .photo
         picker.delegate = context.coordinator
+        if onChooseLibrary != nil {
+            let libraryButton = UIButton(type: .system)
+            var configuration = UIButton.Configuration.glass()
+            configuration.title = "相册"
+            configuration.image = UIImage(systemName: "photo.on.rectangle")
+            configuration.imagePadding = 8
+            libraryButton.configuration = configuration
+            libraryButton.accessibilityLabel = CameraPickerAction.library.accessibilityLabel
+            libraryButton.addTarget(context.coordinator, action: #selector(Coordinator.chooseLibrary), for: .touchUpInside)
+            libraryButton.frame = CGRect(x: 24, y: 68, width: 104, height: 48)
+            let overlay = UIView(frame: UIScreen.main.bounds)
+            overlay.isUserInteractionEnabled = true
+            overlay.addSubview(libraryButton)
+            picker.cameraOverlayView = overlay
+        }
         return picker
     }
 
@@ -53,6 +74,8 @@ struct CameraPicker: UIViewControllerRepresentable {
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.onCancel() }
+
+        @objc func chooseLibrary() { parent.onChooseLibrary?() }
     }
 }
 

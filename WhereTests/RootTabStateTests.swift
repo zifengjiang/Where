@@ -55,6 +55,13 @@ struct RootTabStateTests {
         #expect(state.isPresentingCapture)
     }
 
+    @Test func actionTabPresentsCaptureAndRetainsContentSelection() {
+        let state = RootTabState(selection: .items)
+        state.select(.add)
+        #expect(state.selection == .items)
+        #expect(state.isPresentingCapture)
+    }
+
     @Test
     func startupBeginsLoadingThenRetainsExactDependencies() async throws {
         let dependencies = try AppDependencies.testing()
@@ -202,16 +209,6 @@ struct RootTabStateTests {
         #expect(ready.database === currentDependencies.database)
     }
 
-    @Test(arguments: [
-        (TabViewBottomAccessoryPlacement.inline, AddSceneAccessoryPresentation.iconOnly),
-        (.expanded, .labeled),
-    ])
-    func accessoryPresentationAdaptsToPlacement(
-        placement: TabViewBottomAccessoryPlacement,
-        expected: AddSceneAccessoryPresentation
-    ) {
-        #expect(AddSceneAccessoryPresentation.forPlacement(placement) == expected)
-    }
 }
 
 private actor StartupAttempts {

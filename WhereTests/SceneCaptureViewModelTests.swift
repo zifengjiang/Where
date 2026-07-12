@@ -9,6 +9,16 @@ import UIKit
     #expect(CaptureCanvasPolicy.fieldSurfaceAssetName == "WhereSurface")
 }
 
+@Test func captureInitialSourceUsesCameraWhenAvailableAndPhotosOtherwise() {
+    #expect(CaptureInitialSource.destination(for: .available) == .camera)
+    #expect(CaptureInitialSource.destination(for: .unavailable) == .photos)
+    #expect(CaptureInitialSource.destination(for: .denied) == .permissionRecovery)
+}
+
+@Test func systemCameraExposesLibraryAction() {
+    #expect(CameraPickerAction.library.accessibilityLabel == "从相册选择")
+}
+
 @MainActor
 struct SceneCaptureViewModelTests {
     @Test func sceneNameIsRequiredBeforeEditingMarkers() throws {

@@ -4,27 +4,26 @@ import SwiftUI
 enum RootTabSelection: Hashable {
     case scenes
     case items
-}
-
-enum AddSceneAccessoryPresentation: Equatable {
-    case iconOnly
-    case labeled
-
-    static func forPlacement(
-        _ placement: TabViewBottomAccessoryPlacement?
-    ) -> AddSceneAccessoryPresentation {
-        placement == .inline ? .iconOnly : .labeled
-    }
+    case add
 }
 
 @MainActor
 @Observable
 final class RootTabState {
-    var selection: RootTabSelection
+    var selection: RootTabSelection {
+        didSet {
+            if selection == .add {
+                selection = previousContentSelection
+                isPresentingCapture = true
+            } else { previousContentSelection = selection }
+        }
+    }
     var isPresentingCapture = false
+    private var previousContentSelection: RootTabSelection
 
     init(selection: RootTabSelection = .scenes) {
         self.selection = selection
+        self.previousContentSelection = selection
     }
 
     func select(_ selection: RootTabSelection) { self.selection = selection }
@@ -48,9 +47,14 @@ struct RootTabView: View {
             Tab("所有物品", systemImage: "shippingbox", value: .items) {
                 ItemsView(repository: dependencies.itemRepository, imageStore: dependencies.imageStore)
             }
-
+            Tab(value: .add, role: .search) {
+                Color.clear.accessibilityHidden(true)
+            } label: {
+                Label("添加场景", systemImage: "plus")
+                    .accessibilityLabel("添加场景")
+                    .accessibilityHint("打开系统相机记录新场景")
+            }
         }
-        .tabViewBottomAccessory { AddSceneAccessoryButton(action: state.presentCapture) }
         .tint(WhereTheme.pin)
         .fullScreenCover(isPresented: $state.isPresentingCapture) {
             SceneDraftView(
@@ -58,30 +62,5 @@ struct RootTabView: View {
                 imageStore: dependencies.imageStore
             )
         }
-    }
-}
-
-private struct AddSceneAccessoryButton: View {
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
-
-    let action: () -> Void
-
-    var body: some View {
-        HStack {
-            if placement != .inline { Spacer() }
-            Button(action: action) {
-                switch AddSceneAccessoryPresentation.forPlacement(placement) {
-                case .iconOnly:
-                    Label("添加场景", systemImage: "plus").labelStyle(.iconOnly)
-                case .labeled:
-                    Label("添加场景", systemImage: "plus")
-                }
-            }
-            .frame(minWidth: 44, minHeight: 44)
-            .buttonStyle(.glassProminent)
-            .accessibilityLabel("添加场景")
-            .accessibilityIdentifier("add-scene-button")
-        }
-        .padding(.horizontal, placement == .inline ? 0 : 12)
     }
 }
