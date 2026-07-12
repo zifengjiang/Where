@@ -4,6 +4,10 @@ import Testing
 import UIKit
 @testable import Where
 
+@Test func captureCanvasUsesWhereSemanticBackground() {
+    #expect(CaptureCanvasPolicy.backgroundAssetName == "WhereCanvas")
+}
+
 @MainActor
 struct SceneCaptureViewModelTests {
     @Test func sceneNameIsRequiredBeforeEditingMarkers() throws {

@@ -2,6 +2,10 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+enum CaptureCanvasPolicy {
+    static let backgroundAssetName = "WhereCanvas"
+}
+
 struct SceneDraftView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: SceneCaptureViewModel
@@ -30,6 +34,7 @@ struct SceneDraftView: View {
                     }
                 }
             }
+            .background(WhereTheme.canvas.ignoresSafeArea())
             .navigationTitle(model.step == .markers ? "标记物品" : "添加场景")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -37,6 +42,7 @@ struct SceneDraftView: View {
             }
         }
 		.interactiveDismissDisabled(model.isSaving || model.hasCommittedGraphPendingCompensation)
+        .background(WhereTheme.canvas.ignoresSafeArea())
         .confirmationDialog("选择场景照片", isPresented: $isShowingSourceChoices, titleVisibility: .visible) {
             Button("拍照") { requestCamera() }
             PhotosPicker(selection: $photoItem, matching: .images) { Text("从相册选择") }
@@ -100,8 +106,9 @@ struct SceneDraftView: View {
             }
                 .buttonStyle(.glassProminent).controlSize(.large)
                 .disabled(model.sceneImage == nil || model.isProcessingImage).padding()
-                .background(.bar)
+                .background(WhereTheme.canvas)
         }
+        .background(WhereTheme.canvas.ignoresSafeArea())
         .overlay { if model.isProcessingImage { WhereGlassHUD { ProgressView("正在处理照片…") } } }
     }
 
