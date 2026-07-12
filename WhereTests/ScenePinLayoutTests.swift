@@ -2,6 +2,24 @@ import CoreGraphics
 import Testing
 @testable import Where
 
+@Test func sceneGridAdaptsToWidthAndAccessibilityText() {
+    #expect(SceneGridPolicy.columnCount(availableWidth: 393, isAccessibilitySize: true) == 1)
+    #expect(SceneGridPolicy.columnCount(availableWidth: 393, isAccessibilitySize: false) == 2)
+    #expect(SceneGridPolicy.columnCount(availableWidth: 320, isAccessibilitySize: false) == 1)
+    #expect(SceneGridPolicy.imageHeight(forCardWidth: 180) == 135)
+}
+
+@Test func semanticPinPresentationKeepsVisualAndHitSizesSeparate() {
+    #expect(ScenePinPresentation.selectedDiameter == 28)
+    #expect(ScenePinPresentation.normalDiameter == 20)
+    #expect(ScenePinPresentation.hitTarget == 44)
+}
+
+@Test func emptySceneCompletionRequiresConfirmation() {
+    #expect(MarkerCompletionPolicy.requiresEmptyConfirmation(itemCount: 0))
+    #expect(!MarkerCompletionPolicy.requiresEmptyConfirmation(itemCount: 1))
+}
+
 struct ScenePinLayoutTests {
     @Test func selectedLabelStaysInsideViewportAtEveryCorner() {
         let viewport = CGSize(width: 320, height: 480)

@@ -15,14 +15,14 @@ struct NoteEditorView: View {
         NavigationStack {
             VStack(alignment: .trailing, spacing: 8) {
                 TextEditor(text: $text).font(.body).disabled(isReadOnly)
-                    .accessibilityLabel(isReadOnly ? "Full note" : "Note")
-                Text("\(text.count) characters").font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel(isReadOnly ? "完整备忘" : "备忘")
+                if !isReadOnly { Text("\(text.count) 个字符").font(.caption).foregroundStyle(.secondary) }
                 if let footer { Text(footer).font(.caption).foregroundStyle(.secondary).accessibilityLabel(footer) }
             }.padding()
-            .navigationTitle(isReadOnly ? "Note" : "Edit Note")
+            .navigationTitle(isReadOnly ? "完整备忘" : "编辑备忘")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(isReadOnly ? "Done" : "Cancel") { dismiss() } }
-                if !isReadOnly { ToolbarItem(placement: .confirmationAction) { Button("Save") { onSave(text); dismiss() } } }
+                ToolbarItem(placement: .cancellationAction) { Button(isReadOnly ? "完成" : "取消") { dismiss() } }
+                if !isReadOnly { ToolbarItem(placement: .confirmationAction) { Button("保存") { onSave(text); dismiss() } } }
             }
         }
     }

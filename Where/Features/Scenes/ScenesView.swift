@@ -1,7 +1,16 @@
 import SwiftUI
 import UIKit
 
+enum SceneGridPolicy {
+    static func columnCount(availableWidth: CGFloat, isAccessibilitySize: Bool) -> Int {
+        guard !isAccessibilitySize else { return 1 }
+        return availableWidth >= 360 ? 2 : 1
+    }
+    static func imageHeight(forCardWidth width: CGFloat) -> CGFloat { width * 0.75 }
+}
+
 struct ScenesView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var model: ScenesViewModel
     private let repository: any SceneRepositoryProtocol
     init(repository: any SceneRepositoryProtocol, imageStore: any SceneImageStoreProtocol) {
@@ -35,26 +44,42 @@ struct ScenesView: View {
         } message: { Text(model.deleteErrorMessage ?? "") }
     }
     private var sceneGrid: some View {
-        ScrollView { LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], spacing: 16) {
-            ForEach(model.scenes, id: \.id) { scene in
-                NavigationLink(value: scene.id) { SceneCard(scene: scene, imageStore: model.imageStore) }
-                    .buttonStyle(.plain).contextMenu { Button("删除", systemImage: "trash", role: .destructive) { model.requestDelete(scene) } }
-                    .accessibilityLabel("\(scene.name)，\(scene.itemCount) 件物品")
-            }
-        }.padding() }
+        GeometryReader { proxy in
+            let count = SceneGridPolicy.columnCount(availableWidth: proxy.size.width,
+                                                    isAccessibilitySize: dynamicTypeSize.isAccessibilitySize)
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
+            ScrollView { LazyVGrid(columns: columns, spacing: 20) {
+                ForEach(model.scenes, id: \.id) { scene in
+                    NavigationLink(value: scene.id) { SceneCard(scene: scene, imageStore: model.imageStore) }
+                        .buttonStyle(.plain).contextMenu { Button("删除", systemImage: "trash", role: .destructive) { model.requestDelete(scene) } }
+                        .accessibilityLabel("\(scene.name)，\(scene.itemCount) 件物品")
+                        .accessibilityAction(named: "删除") { model.requestDelete(scene) }
+                }
+            }.padding(WhereTheme.pagePadding) }
+        }
     }
 }
 
 private struct SceneCard: View {
     let scene: SceneSummary; let imageStore: any SceneImageStoreProtocol
+    @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
-    var body: some View { VStack(alignment: .leading, spacing: 10) {
-        Group { if let image { Image(uiImage: image).resizable().scaledToFill().accessibilityLabel("\(scene.name)的场景照片") } else { ZStack { Color.orange.opacity(0.12); Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) }.accessibilityLabel("\(scene.name)的场景照片不可用") } }
-            .frame(height: 130).clipShape(RoundedRectangle(cornerRadius: 18))
-        Text(scene.name).font(.headline).lineLimit(1)
-        Text("\(scene.itemCount) 件物品").font(.subheadline).foregroundStyle(.secondary)
+    var body: some View { VStack(alignment: .leading, spacing: 9) {
+        GeometryReader { proxy in
+            Group { if let image { Image(uiImage: image).resizable().scaledToFill().accessibilityLabel("\(scene.name)的场景照片") } else { ZStack { WhereTheme.orange.opacity(0.14); Image(systemName: "photo.badge.exclamationmark").font(.largeTitle).foregroundStyle(WhereTheme.ink.opacity(0.7)) }.accessibilityLabel("\(scene.name)的场景照片不可用") } }
+                .frame(width: proxy.size.width, height: SceneGridPolicy.imageHeight(forCardWidth: proxy.size.width))
+                .clipped()
+                .overlay(alignment: .bottomLeading) {
+                    Text("\(scene.itemCount) 件物品").font(.caption.weight(.semibold))
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(.regularMaterial, in: Capsule()).padding(10)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: WhereTheme.cardRadius))
+        }
+        .aspectRatio(4 / 3, contentMode: .fit)
+        Text(scene.name).font(.headline).lineLimit(2).fixedSize(horizontal: false, vertical: true)
     }.task(id: scene.imagePath) {
         guard let asset = await imageStore.loadImageAsset(relativePath: scene.imagePath) else { return }
-        image = await SceneThumbnailCache.shared.thumbnail(path: scene.imagePath, asset: asset, maxPixelSize: Int(320 * UIScreen.main.scale))?.image
+        image = await SceneThumbnailCache.shared.thumbnail(path: scene.imagePath, asset: asset, maxPixelSize: Int(420 * displayScale))?.image
     } }
 }

@@ -1,9 +1,21 @@
 import Observation
 import SwiftUI
 
+enum WhereTheme {
+    static let canvas = Color(red: 0.969, green: 0.945, blue: 0.906)
+    static let surface = Color(red: 1.0, green: 0.976, blue: 0.937)
+    static let ink = Color(red: 0.09, green: 0.247, blue: 0.208)
+    static let orange = Color(red: 0.91, green: 0.604, blue: 0.29)
+    static let pin = Color(red: 0.851, green: 0.361, blue: 0.29)
+    static let paper = Color(red: 0.949, green: 0.867, blue: 0.722)
+    static let pagePadding: CGFloat = 16
+    static let cardRadius: CGFloat = 20
+}
+
 enum RootTabSelection: Hashable {
     case scenes
     case items
+    case add
 }
 
 enum AddSceneAccessoryPresentation: Equatable {
@@ -20,11 +32,22 @@ enum AddSceneAccessoryPresentation: Equatable {
 @MainActor
 @Observable
 final class RootTabState {
-    var selection: RootTabSelection
+    var selection: RootTabSelection {
+        didSet {
+            if selection == .add {
+                selection = previousContentSelection
+                isPresentingCapture = true
+            } else {
+                previousContentSelection = selection
+            }
+        }
+    }
     var isPresentingCapture = false
+    private var previousContentSelection: RootTabSelection
 
     init(selection: RootTabSelection = .scenes) {
         self.selection = selection
+        self.previousContentSelection = selection
     }
 
     func select(_ selection: RootTabSelection) { self.selection = selection }
@@ -48,10 +71,12 @@ struct RootTabView: View {
             Tab("所有物品", systemImage: "shippingbox", value: .items) {
                 ItemsView(repository: dependencies.itemRepository, imageStore: dependencies.imageStore)
             }
+
+            Tab("添加", systemImage: "plus", value: .add, role: .search) {
+                Color.clear.accessibilityHidden(true)
+            }
         }
-        .tabViewBottomAccessory {
-            AddSceneAccessoryButton(action: state.presentCapture)
-        }
+        .tint(WhereTheme.pin)
         .fullScreenCover(isPresented: $state.isPresentingCapture) {
             SceneDraftView(
                 repository: dependencies.itemRepository,

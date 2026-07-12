@@ -158,7 +158,7 @@ struct ItemsView: View {
                 description: Text("点按下方物品后，场景照片会显示在这里。")
             )
             .frame(maxWidth: .infinity, minHeight: 148)
-            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+            .background(WhereTheme.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 20))
         }
     }
 
@@ -208,15 +208,15 @@ private struct ItemRow: View {
             }
             Spacer(minLength: 8)
             Image(systemName: selected ? "checkmark.circle.fill" : "location.fill")
-                .foregroundStyle(selected ? Color.red : Color.secondary)
+                .foregroundStyle(selected ? WhereTheme.pin : Color.secondary)
                 .accessibilityHidden(true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-        .background(selected ? Color.red.opacity(0.10) : Color.secondary.opacity(0.06),
+        .background(selected ? WhereTheme.pin.opacity(0.11) : Color.secondary.opacity(0.06),
                     in: RoundedRectangle(cornerRadius: 14))
         .overlay(alignment: .leading) {
-            if selected { Capsule().fill(Color.red).frame(width: 3).padding(.vertical, 10) }
+            if selected { Capsule().fill(WhereTheme.pin).frame(width: 3).padding(.vertical, 10) }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.name)，位于 \(item.sceneName)\(selected ? "，已选择" : "")")

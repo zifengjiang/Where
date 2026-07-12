@@ -26,6 +26,12 @@ struct ScenePinLayout: Equatable {
     }
 }
 
+enum ScenePinPresentation {
+    static let hitTarget: CGFloat = 44
+    static let normalDiameter: CGFloat = 20
+    static let selectedDiameter: CGFloat = 28
+}
+
 struct ScenePinLabelLayout: Equatable {
     static func center(anchor: CGPoint, labelSize: CGSize, viewport: CGSize, margin: CGFloat = 8) -> CGPoint {
         let halfWidth = labelSize.width / 2
@@ -116,11 +122,13 @@ struct ScenePhotoView: View {
     private func marker(for pin: ScenePin, selected: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(.tint)
-                .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
+                .fill(WhereTheme.pin)
+                .frame(width: selected ? ScenePinPresentation.selectedDiameter : ScenePinPresentation.normalDiameter,
+                       height: selected ? ScenePinPresentation.selectedDiameter : ScenePinPresentation.normalDiameter)
             Circle()
                 .stroke(selected ? Color.white : Color.black.opacity(0.65), lineWidth: selected ? 3 : 2)
-                .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
+                .frame(width: selected ? ScenePinPresentation.selectedDiameter : ScenePinPresentation.normalDiameter,
+                       height: selected ? ScenePinPresentation.selectedDiameter : ScenePinPresentation.normalDiameter)
         }
         .frame(width: ScenePinLayout.anchorSize.width, height: ScenePinLayout.anchorSize.height)
         .contentShape(Rectangle())
@@ -134,7 +142,7 @@ struct ScenePhotoView: View {
         if let note = pin.locationNote, !note.isEmpty {
             Text(note)
         } else {
-            Text("Located in this scene")
+            Text("位于这个场景中")
         }
     }
 }

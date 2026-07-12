@@ -40,7 +40,7 @@ struct ItemCardStateTests {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let date = calendar.date(from: DateComponents(year: 2026, month: 7, day: 11, hour: 4))!
         let value = ItemCardState.createdAtText(date, locale: Locale(identifier: "en_US_POSIX"), timeZone: TimeZone(secondsFromGMT: 0)!)
-        #expect(value.hasPrefix("Recorded Jul 11, 2026"))
+        #expect(value.hasPrefix("记录于 Jul 11, 2026"))
         #expect(value.contains("4:00"))
     }
 
@@ -99,8 +99,8 @@ struct ItemCardStateTests {
     }
 
     @Test func accessibilityHintsMatchSeparateActions() {
-        #expect(ItemCardState.accessibilityHint(for: .flipCard, side: .back) == "Show image")
-        #expect(ItemCardState.accessibilityHint(for: .fullNote, side: .back) == "Open full note")
+        #expect(ItemCardState.accessibilityHint(for: .flipCard, side: .back) == "显示物品照片")
+        #expect(ItemCardState.accessibilityHint(for: .fullNote, side: .back) == "打开完整备忘")
     }
 
     @MainActor @Test func cacheComputesOncePerIdentityAndDropsStalePublication() async {
@@ -157,7 +157,7 @@ struct ItemCardStateTests {
     @Test func resolvedOverflowShowsDetailsAndAllowsFullNote() {
         let presentation = ItemCardLayoutPresentation(result: Self.stubResult(width: 20, overflowed: true))
         #expect(!presentation.isLoading)
-        #expect(presentation.detailsTitle == "… More")
+        #expect(presentation.detailsTitle == "查看完整备忘")
         #expect(presentation.canPresentFullNote)
 
         var state = ItemCardState(itemID: UUID())

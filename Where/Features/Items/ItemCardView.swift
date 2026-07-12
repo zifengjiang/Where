@@ -41,7 +41,7 @@ struct ItemCardLayoutPresentation {
     var canPresentFullNote: Bool { result.map { $0.overflowed || !hasDateSpace } ?? false }
     var detailsTitle: String? {
         guard let result, canPresentFullNote else { return nil }
-        return result.overflowed ? "… More" : "Details"
+        return result.overflowed ? "查看完整备忘" : "详情"
     }
 }
 
@@ -158,13 +158,13 @@ struct ItemCardState: Equatable {
         return ItemCardFaceActivation(allowsHitTesting: isActive, accessibilityHidden: !isActive)
     }
     static func accessibilityHint(for action: ItemCardAction, side: ItemCardSide) -> String {
-        switch action { case .flipCard: side == .back ? "Show image" : "Show note"; case .fullNote: "Open full note" }
+        switch action { case .flipCard: side == .back ? "显示物品照片" : "显示备忘"; case .fullNote: "打开完整备忘" }
     }
 
     static func createdAtText(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter(); formatter.locale = locale; formatter.timeZone = timeZone
         formatter.dateStyle = .medium; formatter.timeStyle = .short
-        return "Recorded \(formatter.string(from: date))"
+        return "记录于 \(formatter.string(from: date))"
     }
 }
 
@@ -209,8 +209,8 @@ struct ItemCardView: View {
     private var front: some View {
         Button { state.handle(.flipCard) } label: { Image(uiImage: cutoutImage).resizable().scaledToFit() }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(item.name), front")
-            .accessibilityHint("Tap to show note")
+            .accessibilityLabel("\(item.name)，卡片正面")
+            .accessibilityHint("轻点查看备忘")
             .accessibilityAddTraits(.isButton)
     }
 
@@ -224,8 +224,8 @@ struct ItemCardView: View {
         return ZStack(alignment: .bottom) {
             Canvas { context, _ in
                 guard let result else { return }
-                context.fill(Path(result.path), with: .color(Color(red: 0.96, green: 0.90, blue: 0.78)))
-                for line in result.lines { context.draw(Text(line.text).font(.system(size: metrics.fontSize)).foregroundStyle(.black), in: line.rect) }
+                context.fill(Path(result.path), with: .color(WhereTheme.paper))
+                for line in result.lines { context.draw(Text(line.text).font(.system(size: metrics.fontSize)).foregroundStyle(WhereTheme.ink), in: line.rect) }
                 if presentation.hasDateSpace {
                     context.draw(Text(ItemCardState.createdAtText(item.createdAt)).font(.caption2).foregroundStyle(.secondary),
                                  at: CGPoint(x: result.path.boundingBox.midX, y: result.path.boundingBox.maxY - 12))
@@ -236,7 +236,7 @@ struct ItemCardView: View {
             if presentation.isLoading {
                 ProgressView()
                     .allowsHitTesting(false)
-                    .accessibilityLabel("Loading note layout")
+                    .accessibilityLabel("正在排版备忘")
             } else if let detailsTitle = presentation.detailsTitle {
                 Button(detailsTitle) { state.handle(.fullNote) }
                     .font(.caption).buttonStyle(.borderedProminent).tint(.brown)

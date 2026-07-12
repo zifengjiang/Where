@@ -32,7 +32,7 @@ struct SubjectPickerView: View {
                     Image(uiImage: sourceImage)
                         .resizable()
                         .scaledToFit()
-                        .overlay { if isLoading { ProgressView("Finding subjects…") } }
+                        .overlay { if isLoading { ProgressView("正在识别物品主体…") } }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -45,7 +45,7 @@ struct SubjectPickerView: View {
             }
 
             if analysis != nil {
-                Text("Tap an object to choose its cutout.")
+                Text("轻点要保留的物品主体。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -70,11 +70,11 @@ struct SubjectPickerView: View {
             }
 
             HStack {
-                Button("Use original photo") { useOriginal() }
+                Button("使用原图") { useOriginal() }
                     .buttonStyle(.bordered)
                     .disabled(completionCoordinator.isCompleted)
 
-                Button("Confirm cutout") { confirmCutout() }
+                Button("确认主体") { confirmCutout() }
                     .buttonStyle(.borderedProminent)
                     .disabled(selection.selectedID == nil || isConfirming || completionCoordinator.isCompleted)
             }
@@ -268,8 +268,8 @@ private struct SubjectInteractionView: UIViewRepresentable {
         imageView.contentMode = .scaleAspectFit
         imageView.isUserInteractionEnabled = true
         imageView.isAccessibilityElement = true
-        imageView.accessibilityLabel = "Subject picker"
-        imageView.accessibilityHint = "Tap an object in the photo to select its cutout."
+        imageView.accessibilityLabel = "物品主体选择器"
+        imageView.accessibilityHint = "轻点照片中的物品以选择要保留的主体。"
         imageView.addGestureRecognizer(UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.didTap(_:))))
         return imageView
     }

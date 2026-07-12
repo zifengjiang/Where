@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		ABCDEF000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000002 /* Assets.xcassets */; };
 		00480643D2DC0EADDE107D31 /* ScenesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E7F243729A280AD904AFB6 /* ScenesViewModel.swift */; };
 		0494E714A3ED20E208A540F4 /* ImageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10ADF3E405EAF4492B451CC7 /* ImageStoreTests.swift */; };
 		0FA50A5A9B22326E39A80B52 /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033340F666E38C1D771D85D8 /* ImageStore.swift */; };
@@ -75,6 +76,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		ABCDEF000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		033340F666E38C1D771D85D8 /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		097516BC87680600490F0BA5 /* SilhouetteTextLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SilhouetteTextLayout.swift; sourceTree = "<group>"; };
 		0A0B23BA70E8C7A99EEAEE80 /* SceneDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDetailViewModel.swift; sourceTree = "<group>"; };
@@ -250,8 +252,17 @@
 				1D002845DAAFDD9046B33419 /* Domain */,
 				9EBF9CEED0107C48F5D54459 /* Features */,
 				810996CB6C7CC55E1974A6F1 /* Images */,
+				ABCDEF000000000000000003 /* Resources */,
 			);
 			path = Where;
+			sourceTree = "<group>";
+		};
+		ABCDEF000000000000000003 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				ABCDEF000000000000000002 /* Assets.xcassets */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		BA2AE0A1923097CEBFA13A26 /* Database */ = {
@@ -314,6 +325,7 @@
 			buildPhases = (
 				E7ED0F8B6CA06472498EA266 /* Sources */,
 				EFB0479BA721AAE049851BE1 /* Frameworks */,
+				ABCDEF000000000000000004 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -402,6 +414,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		ABCDEF000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ABCDEF000000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0700B98DBA26A1F319FBEAD1 /* Sources */ = {
@@ -601,6 +624,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "照片只用于记录家中物品，并保存在此设备上。";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -619,6 +643,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "照片只用于记录家中物品，并保存在此设备上。";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

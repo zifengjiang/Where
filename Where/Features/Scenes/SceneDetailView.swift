@@ -17,13 +17,9 @@ struct SceneDetailView: View {
         }
         .navigationTitle(model.scene?.name ?? "场景")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Menu {
-            Button("编辑场景", systemImage: "pencil", action: model.requestEdit)
-            Button("添加物品", systemImage: "plus", action: model.requestAddItem)
             Button("删除场景", systemImage: "trash", role: .destructive) { confirmsDelete = true }
         } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("场景操作") } }
         .task { model.start() }
-        .alert("功能即将推出", isPresented: $model.isPresentingEdit) { Button("好") {} } message: { Text("替换场景照片后，物品标记的位置可能需要调整。编辑功能将在下一步提供。") }
-        .alert("添加物品", isPresented: $model.isPresentingAddItem) { Button("好") {} } message: { Text("添加物品功能将在下一步提供。") }
         .alert("删除场景？", isPresented: $confirmsDelete) { Button("取消", role: .cancel) {}; Button("删除", role: .destructive) { Task { if await model.deleteScene() == .deleted { dismiss() } } } } message: { Text("此场景及其中的所有物品都会被永久删除。") }
         .alert("无法删除", isPresented: Binding(get: { model.deleteErrorMessage != nil }, set: { if !$0 { model.deleteErrorMessage = nil } })) { Button("取消", role: .cancel) {}; Button("重试") { Task { if await model.deleteScene() == .deleted { dismiss() } } } } message: { Text(model.deleteErrorMessage ?? "") }
         .alert("图片清理未完成", isPresented: Binding(get: { model.cleanupWarning != nil }, set: { _ in })) {
@@ -32,7 +28,21 @@ struct SceneDetailView: View {
         } message: { Text(model.cleanupWarning ?? "") }
     }
     @ViewBuilder private var detail: some View {
-        if let image { ScenePhotoView(image: image, pins: model.pins, selectedItemID: model.selectedItemID, imageAccessibilityLabel: "\(model.scene?.name ?? "场景")的场景照片", onPinTap: model.selectPin).background(.black) }
+        if let image {
+            VStack(spacing: 0) {
+                ScenePhotoView(image: image, pins: model.pins, selectedItemID: model.selectedItemID,
+                               imageAccessibilityLabel: "\(model.scene?.name ?? "场景")的场景照片", onPinTap: model.selectPin)
+                    .background(.black)
+                if let selected = model.items.first(where: { $0.id == model.selectedItemID }) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selected.name).font(.headline)
+                        if let note = selected.locationNote, !note.isEmpty {
+                            Label(note, systemImage: "location.fill").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(16).background(WhereTheme.surface)
+                }
+            }
+        }
         else { ContentUnavailableView("照片不可用", systemImage: "photo.badge.exclamationmark", description: Text(model.scene?.name ?? "场景信息仍可查看。"))
             .task(id: model.scene?.imagePath) { if let path = model.scene?.imagePath, let asset = await model.imageStore.loadImageAsset(relativePath: path) { image = await SceneThumbnailCache.shared.thumbnail(path: path, asset: asset, maxPixelSize: Int(1536 * UIScreen.main.scale))?.image } } }
     }

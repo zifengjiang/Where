@@ -59,6 +59,7 @@ struct ItemDraftSheet: View {
                 }
             }
         }
+        .presentationDetents([.large])
         .onChange(of: appearanceItem) { _, item in load(item) }
 		.confirmationDialog("选择物品照片", isPresented: $isShowingAppearanceSources, titleVisibility: .visible) {
 			Button("拍照") { requestCamera() }
