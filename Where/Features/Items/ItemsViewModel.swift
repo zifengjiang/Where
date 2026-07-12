@@ -12,6 +12,8 @@ final class ItemsViewModel {
     private(set) var items: [ItemSummary] = []
     private(set) var selectedItem: ItemSummary?
     private(set) var state: LoadState = .loading
+    var effectiveQuery: String { SearchNormalizer.normalize(query) }
+    var hasEffectiveQuery: Bool { !effectiveQuery.isEmpty }
 
     private let repository: any ItemRepositoryProtocol
     private let debounce: Duration

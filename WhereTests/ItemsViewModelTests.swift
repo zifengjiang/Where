@@ -26,6 +26,30 @@ struct ItemsViewModelTests {
         #expect(!ItemAppearanceText(item: item).createdAt.isEmpty)
     }
 
+    @Test func candidateLoaderActuallyAttemptsOriginalAfterCutoutFailure() async {
+        let plan = ItemAppearanceLoadPlan(cutout: "missing.png", original: "valid.jpg")
+        let attempts = AttemptRecorder()
+        let loaded = await ItemAppearanceCandidateLoader.firstAvailable(in: plan) { candidate in
+            await attempts.append(candidate.path)
+            return candidate.source == .original ? "decoded" : nil
+        }
+        #expect(await attempts.values == ["missing.png", "valid.jpg"])
+        #expect(loaded?.candidate.source == .original)
+        #expect(loaded?.value == "decoded")
+    }
+
+    @Test func whitespaceOnlyQueryUsesBlankQueryPresentation() {
+        let model = ItemsViewModel(repository: ItemsRepositoryFake(events: [:]), debounce: .zero)
+        model.query = " \n　 "
+        #expect(model.effectiveQuery.isEmpty)
+        #expect(model.hasEffectiveQuery == false)
+    }
+
+    @Test func pinWithoutTapCallbackUsesNoninteractiveAccessibilityPresentation() {
+        #expect(ScenePinInteraction.presentation(hasTapAction: false) == .accessibilityElement)
+        #expect(ScenePinInteraction.presentation(hasTapAction: true) == .button)
+    }
+
     @Test func blankQueryLoadsAllWithoutDefaultSelection() async {
         let item = itemFixture(name: "钥匙")
         let repository = ItemsRepositoryFake(events: ["": [.success([item])]])
@@ -101,6 +125,11 @@ struct ItemsViewModelTests {
         #expect(model.selectedItem?.name == "说明书")
         #expect(model.selectedItem?.sceneImagePath == "missing.jpg")
     }
+}
+
+private actor AttemptRecorder {
+    private(set) var values: [String] = []
+    func append(_ value: String) { values.append(value) }
 }
 
 private enum ItemsTestError: Error { case failed }

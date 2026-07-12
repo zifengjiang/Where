@@ -32,6 +32,21 @@ struct ItemAppearanceLoadPlan: Equatable {
     }
 }
 
+@MainActor
+enum ItemAppearanceCandidateLoader {
+    struct Loaded<Value> { let candidate: ItemAppearanceLoadPlan.Candidate; let value: Value }
+    static func firstAvailable<Value>(
+        in plan: ItemAppearanceLoadPlan,
+        load: (ItemAppearanceLoadPlan.Candidate) async -> Value?
+    ) async -> Loaded<Value>? {
+        for candidate in plan.candidates {
+            guard !Task.isCancelled else { return nil }
+            if let value = await load(candidate) { return Loaded(candidate: candidate, value: value) }
+        }
+        return nil
+    }
+}
+
 struct ItemAppearanceText: Equatable {
     let note: String
     let createdAt: String
@@ -56,7 +71,7 @@ struct ItemsView: View {
         NavigationStack {
             Group {
                 if model.state == .failed { errorState }
-                else if model.state == .loaded && model.items.isEmpty && model.query.isEmpty { emptyState }
+                else if model.state == .loaded && model.items.isEmpty && !model.hasEffectiveQuery { emptyState }
                 else { content }
             }
             .navigationTitle("所有物品")
@@ -82,9 +97,9 @@ struct ItemsView: View {
                 if model.state == .loading {
                     ProgressView("正在搜索…").padding(.vertical, 8)
                 }
-                if model.items.isEmpty && !model.query.isEmpty {
+                if model.items.isEmpty && model.hasEffectiveQuery {
                     ContentUnavailableView(
-                        "没有找到“\(model.query)”",
+                        "没有找到“\(model.effectiveQuery)”",
                         systemImage: "magnifyingglass",
                         description: Text("请尝试物品的别名或标签。")
                     )
@@ -180,12 +195,7 @@ private struct ItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImageFileView(relativePath: item.appearanceCutoutImagePath ?? item.appearanceOriginalImagePath,
-                               imageStore: imageStore, maxPixelSize: 160,
-                               accessibilityLabel: "\(item.name)的物品照片",
-                               failurePolicy: .compact) { image in
-                Image(uiImage: image).resizable().scaledToFit().padding(4)
-            }
+            ItemRowThumbnail(item: item, imageStore: imageStore)
             .frame(width: 48, height: 48)
             .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -211,6 +221,37 @@ private struct ItemRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.name)，位于 \(item.sceneName)\(selected ? "，已选择" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct ItemRowThumbnail: View {
+    let item: ItemSummary
+    let imageStore: any SceneImageStoreProtocol
+    @State private var image: UIImage?
+
+    private var plan: ItemAppearanceLoadPlan {
+        ItemAppearanceLoadPlan(cutout: item.appearanceCutoutImagePath,
+                               original: item.appearanceOriginalImagePath)
+    }
+
+    var body: some View {
+        ZStack {
+            Color.orange.opacity(0.12)
+            if let image { Image(uiImage: image).resizable().scaledToFit().padding(4) }
+            else { Image(systemName: "shippingbox").foregroundStyle(.secondary) }
+        }
+        .accessibilityLabel(image == nil ? "\(item.name)的物品照片不可用" : "\(item.name)的物品照片")
+        .task(id: plan) {
+            image = nil
+            let loaded: ItemAppearanceCandidateLoader.Loaded<UIImage>? = await ItemAppearanceCandidateLoader.firstAvailable(in: plan) { candidate in
+                guard let asset = await imageStore.loadImageAsset(relativePath: candidate.path) else { return nil }
+                return await SceneThumbnailCache.shared.thumbnail(
+                    path: candidate.path, asset: asset, maxPixelSize: 160
+                )?.image
+            }
+            guard !Task.isCancelled else { return }
+            image = loaded?.value
+        }
     }
 }
 
@@ -285,19 +326,22 @@ private struct AppearanceCard: View {
 
     private func loadAppearance() async {
         loadedImage = nil; loadedSource = nil; isLoading = !plan.candidates.isEmpty
-        for candidate in plan.candidates {
-            guard !Task.isCancelled else { return }
+        let loaded: ItemAppearanceCandidateLoader.Loaded<(SceneThumbnail, UInt64)>? = await ItemAppearanceCandidateLoader.firstAvailable(in: plan) { candidate in
             guard let asset = await imageStore.loadImageAsset(relativePath: candidate.path),
                   let thumbnail = await SceneThumbnailCache.shared.thumbnail(
                     path: candidate.path, asset: asset, maxPixelSize: 1000
-                  ), !Task.isCancelled else { continue }
-            loadedImage = thumbnail.image
-            loadedSource = candidate.source
-            imageRevision = "\(candidate.path)-\(asset.revision)"
+                  ) else { return nil }
+            return (thumbnail, asset.revision)
+        }
+        guard !Task.isCancelled else { return }
+        if let loaded {
+            loadedImage = loaded.value.0.image
+            loadedSource = loaded.candidate.source
+            imageRevision = "\(loaded.candidate.path)-\(loaded.value.1)"
             isLoading = false
             return
         }
-        if !Task.isCancelled { isLoading = false }
+        isLoading = false
     }
 
     private struct AppearanceLoadIdentity: Equatable {

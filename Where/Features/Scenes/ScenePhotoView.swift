@@ -51,6 +51,13 @@ struct ScenePin: Identifiable, Sendable, Equatable {
     }
 }
 
+enum ScenePinInteraction: Equatable {
+    enum Presentation: Equatable { case button, accessibilityElement }
+    static func presentation(hasTapAction: Bool) -> Presentation {
+        hasTapAction ? .button : .accessibilityElement
+    }
+}
+
 struct ScenePhotoView: View {
     let image: UIImage
     let pins: [ScenePin]
@@ -72,9 +79,14 @@ struct ScenePhotoView: View {
 
                 ForEach(pins) { pin in
                     let point = geometry.viewPoint(for: pin.normalizedPoint)
-                    Button { onPinTap?(pin.id) } label: { marker(for: pin, selected: pin.id == selectedItemID) }
-                        .buttonStyle(.plain)
-                        .position(point)
+                    if let onPinTap {
+                        Button { onPinTap(pin.id) } label: { marker(for: pin, selected: pin.id == selectedItemID) }
+                            .buttonStyle(.plain)
+                            .position(point)
+                    } else {
+                        marker(for: pin, selected: pin.id == selectedItemID)
+                            .position(point)
+                    }
                     if pin.id == selectedItemID {
                         let labelSize = CGSize(width: min(220, max(80, proxy.size.width - 16)), height: 58)
                         Text(pin.name)
