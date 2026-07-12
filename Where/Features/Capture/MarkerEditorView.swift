@@ -78,8 +78,13 @@ struct MarkerEditorView: View {
             }
         )
         .accessibilityLabel(item.name)
-        .accessibilityHint("轻点编辑，拖动可调整位置，长按可删除")
+		.accessibilityHint(accessibilityHint(for: item))
         .accessibilityAddTraits(selected ? .isSelected : [])
 		.accessibilityAction(named: "删除") { model.removeItem(id: item.id) }
     }
+
+	private func accessibilityHint(for item: CaptureItemDraft) -> String {
+		let action = "轻点编辑，拖动可调整位置，长按可删除"
+		return item.locationNote.isEmpty ? action : "位置：\(item.locationNote)。\(action)"
+	}
 }

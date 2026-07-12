@@ -59,7 +59,7 @@ struct SceneCaptureViewModelTests {
         #expect(harness.model.items.map(\.name) == ["耳机"])
     }
 
-    @Test func finishPromotesThenSavesAndPreventsDuplicateSubmission() async throws {
+    @Test func finishSavesDatabaseBeforePromotionAndPreventsDuplicateSubmission() async throws {
         let harness = try CaptureHarness(saveBehavior: .suspend)
         try await harness.stageScene()
         harness.model.sceneName = "玄关"
@@ -78,6 +78,7 @@ struct SceneCaptureViewModelTests {
         #expect(saved.name == "玄关")
         #expect(saved.imagePath.hasPrefix("Images/"))
         #expect(saved.items.count == 1)
+		#expect(await harness.repository.saveObservedDraftFilesOnly)
     }
 
     @Test func failedSaveRestoresStagingAndRetrySucceeds() async throws {
@@ -101,7 +102,57 @@ struct SceneCaptureViewModelTests {
         #expect(harness.model.hasStagedImages)
         await harness.model.cancel()
         #expect(harness.model.hasStagedImages == false)
+		#expect(harness.draftFilenames().isEmpty)
     }
+
+	@Test func savedDraftIncludesNotesAndBothAppearancePaths() async throws {
+		let harness = try CaptureHarness()
+		try await harness.stageScene()
+		harness.model.sceneName = "储物间"
+		harness.model.beginItem(atNormalizedPoint: CGPoint(x: 0.3, y: 0.6))
+		harness.model.pendingItem?.name = "工具箱"
+		harness.model.pendingItem?.locationNote = "上层右侧"
+		harness.model.pendingItem?.note = "内有螺丝刀"
+		let image = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 12)).image { context in
+			UIColor.red.setFill(); context.fill(CGRect(x: 2, y: 2, width: 8, height: 8))
+		}
+		let data = try #require(image.pngData())
+		try await harness.model.setPendingAppearance(originalData: data, cutout: try #require(image.cgImage), preview: image)
+		#expect(harness.model.commitPendingItem())
+
+		await harness.model.finish()
+		let item = try #require(await harness.repository.lastDraft?.items.first)
+		#expect(item.locationNote == "上层右侧")
+		#expect(item.note == "内有螺丝刀")
+		#expect(item.appearanceOriginalImagePath?.hasPrefix("Images/") == true)
+		#expect(item.appearanceCutoutImagePath?.hasPrefix("Images/") == true)
+	}
+
+	@Test func promotionFailureCompensatesDatabaseAndRemainsRetryable() async throws {
+		let harness = try CaptureHarness()
+		try await harness.stageScene()
+		harness.model.sceneName = "卧室"
+		let name = try #require(harness.model.sceneImageDraft?.relativeName)
+		let collision = harness.root.appending(path: "Images/\(name)")
+		try Data([1]).write(to: collision)
+
+		await harness.model.finish()
+		#expect(harness.model.didFinish == false)
+		#expect(await harness.repository.rollbackCount == 1)
+		#expect(FileManager.default.fileExists(atPath: harness.root.appending(path: "Drafts/\(name)").path))
+		try FileManager.default.removeItem(at: collision)
+		await harness.model.finish()
+		#expect(harness.model.didFinish)
+	}
+
+	@Test func appearanceFailureIsActionableAndDoesNotLosePendingItem() throws {
+		let harness = try CaptureHarness()
+		harness.model.beginItem(atNormalizedPoint: CGPoint(x: 0.5, y: 0.5))
+		harness.model.pendingItem?.name = "护照"
+		harness.model.reportAppearanceError(ImageStoreError.invalidImage, step: "读取")
+		#expect(harness.model.appearanceErrorMessage?.contains("读取") == true)
+		#expect(harness.model.pendingItem?.name == "护照")
+	}
 
 	@Test func cancelingAnAppearanceReplacementKeepsStoredDraftAndDiscardsReplacement() async throws {
 		let harness = try CaptureHarness()
@@ -136,14 +187,23 @@ private actor CaptureRepositorySpy: @preconcurrency ItemRepositoryProtocol {
     private var behavior: Behavior
     private(set) var saveCount = 0
     private(set) var lastDraft: SceneDraft?
+	private(set) var rollbackCount = 0
+	private(set) var saveObservedDraftFilesOnly = false
+	private let root: URL
     private var savingContinuation: CheckedContinuation<Void, Never>?
     private var resumeContinuation: CheckedContinuation<Void, Never>?
 
-    init(behavior: Behavior) { self.behavior = behavior }
+	init(behavior: Behavior, root: URL) { self.behavior = behavior; self.root = root }
 
     func saveSceneDraft(_ draft: SceneDraft) async throws {
         saveCount += 1
         lastDraft = draft
+		let relativePaths = [draft.imagePath] + draft.items.flatMap { [$0.appearanceOriginalImagePath, $0.appearanceCutoutImagePath].compactMap { $0 } }
+		saveObservedDraftFilesOnly = relativePaths.allSatisfy { path in
+			let name = URL(fileURLWithPath: path).lastPathComponent
+			return FileManager.default.fileExists(atPath: root.appending(path: "Drafts/\(name)").path)
+				&& !FileManager.default.fileExists(atPath: root.appending(path: path).path)
+		}
         if behavior == .failOnce {
             behavior = .succeed
             throw Failure.forced
@@ -155,6 +215,7 @@ private actor CaptureRepositorySpy: @preconcurrency ItemRepositoryProtocol {
             behavior = .succeed
         }
     }
+	func rollbackSceneDraft(id: UUID) async throws { rollbackCount += 1 }
 
     func waitUntilSaving() async {
         if saveCount > 0 { return }
@@ -170,14 +231,19 @@ private actor CaptureRepositorySpy: @preconcurrency ItemRepositoryProtocol {
 private final class CaptureHarness {
     let model: SceneCaptureViewModel
     let repository: CaptureRepositorySpy
-    private let imageStore: ImageStore
+	let root: URL
+	private let imageStore: ImageStore
 
     init(saveBehavior: CaptureRepositorySpy.Behavior = .succeed) throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+		root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         imageStore = try ImageStore(rootDirectory: root)
-        repository = CaptureRepositorySpy(behavior: saveBehavior)
+		repository = CaptureRepositorySpy(behavior: saveBehavior, root: root)
         model = SceneCaptureViewModel(repository: repository, imageStore: imageStore)
     }
+
+	func draftFilenames() -> [String] {
+		(try? FileManager.default.contentsOfDirectory(atPath: root.appending(path: "Drafts").path)) ?? []
+	}
 
     func stageScene() async throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 12)).image { context in

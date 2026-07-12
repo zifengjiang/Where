@@ -37,6 +37,9 @@ struct ItemDraftSheet: View {
                             Label(binding.wrappedValue.appearancePreview == nil ? "添加物品照片" : "更换物品照片", systemImage: "photo")
                         }
                         if isLoadingPhoto { ProgressView("正在读取照片…") }
+						if let message = model.appearanceErrorMessage {
+							Text(message).font(.callout).foregroundStyle(.red)
+						}
                         Text("可选择照片中的主体，生成去背景的物品卡片。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -64,10 +67,14 @@ struct ItemDraftSheet: View {
 			CameraPicker { image in
 				isShowingCamera = false
 				Task {
-					guard let data = await Task.detached(
+					let data = await Task.detached(
 						priority: .userInitiated,
 						operation: { image.jpegData(compressionQuality: 0.92) }
-					).value else { return }
+					).value
+					guard let data else {
+						model.reportAppearanceError(ImageStoreError.encodingFailed, step: "编码")
+						return
+					}
 					sourceData = data
 					sourceImage = image
 					isShowingSubjectPicker = true
@@ -111,12 +118,16 @@ struct ItemDraftSheet: View {
         isLoadingPhoto = true
         Task {
             defer { isLoadingPhoto = false; appearanceItem = nil }
-			guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-			let image = await Task.detached(priority: .userInitiated) { UIImage(data: data) }.value
-			guard let image else { return }
-            sourceData = data
-            sourceImage = image
-            isShowingSubjectPicker = true
+			do {
+				guard let data = try await item.loadTransferable(type: Data.self) else { throw ImageStoreError.invalidImage }
+				let image = await Task.detached(priority: .userInitiated) { UIImage(data: data) }.value
+				guard let image else { throw ImageStoreError.invalidImage }
+				sourceData = data
+				sourceImage = image
+				isShowingSubjectPicker = true
+			} catch {
+				model.reportAppearanceError(error, step: "读取")
+			}
         }
     }
 
@@ -128,12 +139,23 @@ struct ItemDraftSheet: View {
 	}
 
     private func saveAppearance(original: UIImage, cutout: CGImage?) {
-        guard let data = sourceData ?? original.jpegData(compressionQuality: 0.92) else { return }
+		guard let data = sourceData ?? original.jpegData(compressionQuality: 0.92) else {
+			model.reportAppearanceError(ImageStoreError.encodingFailed, step: "编码")
+			return
+		}
         isShowingSubjectPicker = false
         Task {
             isLoadingPhoto = true
             defer { isLoadingPhoto = false }
-            try? await model.setPendingAppearance(originalData: data, cutout: cutout, preview: cutout.map(UIImage.init(cgImage:)) ?? original)
+			do {
+				try await model.setPendingAppearance(
+					originalData: data,
+					cutout: cutout,
+					preview: cutout.map(UIImage.init(cgImage:)) ?? original
+				)
+			} catch {
+				model.reportAppearanceError(error, step: "保存")
+			}
         }
     }
 }

@@ -104,6 +104,28 @@ struct ItemRepositoryTests {
         #expect(try await repository.searchItems(query: "new").map(\.id) == [item1ID])
     }
 
+	@Test
+	func rollbackSceneDraftRemovesCommittedGraphForImagePromotionCompensation() async throws {
+		let (database, repository) = try makeRepository()
+		try await repository.saveSceneDraft(sceneDraft(items: [
+			itemDraft(name: "Camera", aliases: ["相机"], tags: ["电子"]),
+		]))
+
+		try await repository.rollbackSceneDraft(id: sceneID)
+
+		#expect(try await repository.searchItems(query: "").isEmpty)
+		let counts = try await database.writer.read { db in
+			(
+				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM scene")!,
+				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM item")!,
+				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM tag")!
+			)
+		}
+		#expect(counts.0 == 0)
+		#expect(counts.1 == 0)
+		#expect(counts.2 == 0)
+	}
+
     @Test
     func validationFailureRollsBackCompleteGraph() async throws {
         let (database, repository) = try makeRepository()

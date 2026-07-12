@@ -58,6 +58,7 @@ final class SceneCaptureViewModel {
     private var editingItemID: UUID?
     private(set) var validationMessage: String?
     private(set) var imageErrorMessage: String?
+	private(set) var appearanceErrorMessage: String?
     private(set) var saveErrorMessage: String?
     private(set) var isSaving = false
     private(set) var isProcessingImage = false
@@ -98,6 +99,10 @@ final class SceneCaptureViewModel {
     func reportImageError(_ error: Error) {
         imageErrorMessage = "无法读取照片，请重新选择。\n\(error.localizedDescription)"
     }
+
+	func reportAppearanceError(_ error: Error, step: String) {
+		appearanceErrorMessage = "物品照片\(step)失败，当前资料已保留，请重新选择。\n\(error.localizedDescription)"
+	}
 
     @discardableResult
     func beginMarking() -> Bool {
@@ -213,6 +218,7 @@ final class SceneCaptureViewModel {
         pending.appearanceCutout = cutoutDraft
         pending.appearancePreview = preview
         pendingItem = pending
+		appearanceErrorMessage = nil
         await imageStore.discard(old)
     }
 
@@ -222,12 +228,15 @@ final class SceneCaptureViewModel {
         isSaving = true
         saveErrorMessage = nil
         let staged = allDraftImages
+		let pathByName = Dictionary(uniqueKeysWithValues: staged.map { ($0.relativeName, "Images/\($0.relativeName)") })
+		let databaseDraft = makeSceneDraft(
+			scenePath: pathByName[sceneImageDraft.relativeName]!,
+			paths: pathByName
+		)
         do {
-            let paths = try await imageStore.promote(staged)
-            let pathByName = Dictionary(uniqueKeysWithValues: zip(staged.map(\.relativeName), paths))
+			try await repository.saveSceneDraft(databaseDraft)
             do {
-                let draft = makeSceneDraft(scenePath: pathByName[sceneImageDraft.relativeName]!, paths: pathByName)
-                try await repository.saveSceneDraft(draft)
+				_ = try await imageStore.promote(staged)
                 didFinish = true
                 self.sceneImageDraft = nil
                 for index in items.indices {
@@ -235,14 +244,15 @@ final class SceneCaptureViewModel {
                     items[index].appearanceCutout = nil
                 }
             } catch {
+				let promotionError = error
                 do {
-                    try await imageStore.restorePromoted(staged)
-                } catch {
-                    saveErrorMessage = "保存失败，图片恢复也未完成。请保留此页面并重试。"
+					try await repository.rollbackSceneDraft(id: sceneID)
+				} catch {
+					saveErrorMessage = "图片整理失败，数据库补偿也未完成。草稿仍保留，请重试；若问题持续请取消后重新录入。"
                     isSaving = false
                     return
                 }
-                throw error
+				throw promotionError
             }
         } catch {
             saveErrorMessage = "保存失败，草稿已保留，可以重试。\n\(error.localizedDescription)"

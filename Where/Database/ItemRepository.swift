@@ -3,6 +3,7 @@ import GRDB
 
 protocol ItemRepositoryProtocol: Sendable {
     func saveSceneDraft(_ draft: SceneDraft) async throws
+	func rollbackSceneDraft(id: UUID) async throws
     func searchItems(query: String) async throws -> [ItemSummary]
     func observeItems(query: String) -> AsyncThrowingStream<[ItemSummary], Error>
     func deleteItem(id: UUID) async throws -> DeletedImagePaths
@@ -55,6 +56,10 @@ final class ItemRepository: ItemRepositoryProtocol, Sendable {
             try db.execute(sql: "DELETE FROM tag WHERE NOT EXISTS (SELECT 1 FROM itemTag WHERE itemTag.tagID = tag.id)")
         }
     }
+
+	func rollbackSceneDraft(id: UUID) async throws {
+		_ = try await sceneRepository.deleteScene(id: id)
+	}
 
     func searchItems(query: String) async throws -> [ItemSummary] {
         let normalizedQuery = SearchNormalizer.normalize(query)
