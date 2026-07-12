@@ -26,6 +26,17 @@ struct ScenePinLayout: Equatable {
     }
 }
 
+struct ScenePinLabelLayout: Equatable {
+    static func center(anchor: CGPoint, labelSize: CGSize, viewport: CGSize, margin: CGFloat = 8) -> CGPoint {
+        let halfWidth = labelSize.width / 2
+        let x = min(max(anchor.x, margin + halfWidth), max(margin + halfWidth, viewport.width - margin - halfWidth))
+        let below = anchor.y + ScenePinLayout.anchorSize.height / 2 + ScenePinLayout.labelSpacing + labelSize.height / 2
+        let above = anchor.y - ScenePinLayout.anchorSize.height / 2 - ScenePinLayout.labelSpacing - labelSize.height / 2
+        let y = below + labelSize.height / 2 <= viewport.height - margin ? below : max(margin + labelSize.height / 2, above)
+        return CGPoint(x: x, y: y)
+    }
+}
+
 struct ScenePin: Identifiable, Sendable, Equatable {
     let id: UUID
     let name: String
@@ -60,9 +71,25 @@ struct ScenePhotoView: View {
                     .accessibilityLabel(imageAccessibilityLabel)
 
                 ForEach(pins) { pin in
+                    let point = geometry.viewPoint(for: pin.normalizedPoint)
                     Button { onPinTap?(pin.id) } label: { marker(for: pin, selected: pin.id == selectedItemID) }
                         .buttonStyle(.plain)
-                        .position(geometry.viewPoint(for: pin.normalizedPoint))
+                        .position(point)
+                    if pin.id == selectedItemID {
+                        let labelSize = CGSize(width: min(220, max(80, proxy.size.width - 16)), height: 58)
+                        Text(pin.name)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .frame(width: labelSize.width, height: labelSize.height)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                            .position(ScenePinLabelLayout.center(anchor: point, labelSize: labelSize, viewport: proxy.size))
+                            .accessibilityHidden(true)
+                    }
                 }
             }
             .contentShape(Rectangle())
@@ -84,18 +111,6 @@ struct ScenePhotoView: View {
                 .frame(width: selected ? 28 : 20, height: selected ? 28 : 20)
         }
         .frame(width: ScenePinLayout.anchorSize.width, height: ScenePinLayout.anchorSize.height)
-        .overlay(alignment: .top) {
-            if selected {
-                Text(pin.name)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.regularMaterial, in: Capsule())
-                    .fixedSize()
-                    .offset(y: ScenePinLayout.anchorSize.height + ScenePinLayout.labelSpacing)
-            }
-        }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pin.name)

@@ -188,6 +188,21 @@ struct ScenesViewModelTests {
         #expect(repository.deleteCount == 1)
         #expect(images.enqueueCount == 2)
     }
+
+    @Test func dismissedDetailTransfersFailedEnqueueToAppScopedStore() async {
+        let scene = fixtureScene()
+        let repository = FakeSceneRepository(events: [], detail: SceneDetail(scene: scene, items: []))
+        let images = FakeSceneImageStore(enqueueError: TestError.failed)
+        var detail: SceneDetailViewModel? = SceneDetailViewModel(sceneID: scene.id, repository: repository, imageStore: images)
+        #expect(await detail?.deleteScene() == .cleanupPending)
+        detail = nil
+        #expect(await images.hasPendingCleanup())
+        images.enqueueError = nil
+        let scenes = ScenesViewModel(repository: FakeSceneRepository(events: []), imageStore: images)
+        await scenes.retryCleanup()
+        #expect(images.pendingPaths.isEmpty)
+        #expect(repository.deleteCount == 1)
+    }
 }
 
 private final class HangingSceneRepository: SceneRepositoryProtocol, @unchecked Sendable {
@@ -230,7 +245,7 @@ private final class FakeSceneImageStore: SceneImageStoreProtocol, @unchecked Sen
     init(error: Error? = nil, enqueueError: Error? = nil, log: EventLog? = nil) { self.error = error; self.enqueueError = enqueueError; self.log = log }
     func loadImage(relativePath: String) async -> Data? { nil }
     func delete(relativePaths: [String]) async throws { deleteCount += 1; log?.values.append("images"); if let error { throw error } }
-    func enqueueCleanup(relativePaths: [String]) async throws { enqueueCount += 1; if let enqueueError { throw enqueueError }; pendingPaths.append(contentsOf: relativePaths) }
+    func enqueueCleanup(relativePaths: [String]) async throws { enqueueCount += 1; pendingPaths.append(contentsOf: relativePaths); if let enqueueError { throw enqueueError } }
     func hasPendingCleanup() async -> Bool { !pendingPaths.isEmpty }
     func retryPendingCleanup() async throws { try await delete(relativePaths: pendingPaths); pendingPaths = [] }
 }

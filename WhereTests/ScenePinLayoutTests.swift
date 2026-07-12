@@ -3,6 +3,16 @@ import Testing
 @testable import Where
 
 struct ScenePinLayoutTests {
+    @Test func selectedLabelStaysInsideViewportAtEveryCorner() {
+        let viewport = CGSize(width: 320, height: 480)
+        let label = CGSize(width: 220, height: 58)
+        for anchor in [CGPoint(x: 0, y: 0), CGPoint(x: 320, y: 0), CGPoint(x: 0, y: 480), CGPoint(x: 320, y: 480)] {
+            let center = ScenePinLabelLayout.center(anchor: anchor, labelSize: label, viewport: viewport)
+            let frame = CGRect(x: center.x - label.width / 2, y: center.y - label.height / 2, width: label.width, height: label.height)
+            #expect(frame.minX >= 8 && frame.maxX <= 312)
+            #expect(frame.minY >= 8 && frame.maxY <= 472)
+        }
+    }
     @Test(arguments: [
         CGSize.zero,
         CGSize(width: 80, height: 20),

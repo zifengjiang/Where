@@ -24,6 +24,7 @@ actor ImageStore {
     private let draftsDirectory: URL
     private let imagesDirectory: URL
     private let fileManager = FileManager.default
+    private var volatileCleanupPaths: Set<String> = []
     private var cleanupBacklogURL: URL { rootDirectory.appending(path: "PendingImageCleanup.json") }
 
     init(rootDirectory: URL) throws {
@@ -169,16 +170,19 @@ actor ImageStore {
     }
 
     func enqueueCleanup(relativePaths: [String]) async throws {
+        volatileCleanupPaths.formUnion(relativePaths)
         try verifyOwnedStorage()
         var paths = try pendingCleanupPaths()
-        for path in relativePaths { _ = try finalURL(path); paths.insert(path) }
+        for path in volatileCleanupPaths { _ = try finalURL(path); paths.insert(path) }
         let data = try JSONEncoder().encode(paths.sorted())
         try data.write(to: cleanupBacklogURL, options: .atomic)
+        volatileCleanupPaths.removeAll()
     }
 
-    func hasPendingCleanup() async -> Bool { !((try? pendingCleanupPaths()) ?? []).isEmpty }
+    func hasPendingCleanup() async -> Bool { !volatileCleanupPaths.isEmpty || !((try? pendingCleanupPaths()) ?? []).isEmpty }
 
     func retryPendingCleanup() async throws {
+        if !volatileCleanupPaths.isEmpty { try await enqueueCleanup(relativePaths: []) }
         let paths = try pendingCleanupPaths()
         guard !paths.isEmpty else { return }
         try await delete(relativePaths: paths)
