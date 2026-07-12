@@ -18,6 +18,49 @@ struct SceneCaptureViewModelTests {
         #expect(harness.model.sceneName == "书房")
     }
 
+	@Test func scenePreviewIsDownsampledForDisplay() async throws {
+		let harness = try CaptureHarness()
+		let image = UIGraphicsImageRenderer(size: CGSize(width: 2400, height: 1200)).image { context in
+			UIColor.orange.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2400, height: 1200))
+		}
+		let data = try #require(image.jpegData(compressionQuality: 0.8))
+		try await harness.model.setSceneImage(data: data, pixelSize: image.size)
+		let preview = try #require(harness.model.sceneImage)
+		#expect(max(preview.size.width, preview.size.height) <= 1600)
+		#expect(harness.model.sceneImageSize == image.size)
+	}
+
+	@Test func lateSceneStageCannotResurrectCancelledCapture() async throws {
+		let harness = try CaptureHarness()
+		let image = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 2000)).image { context in
+			UIColor.purple.setFill(); context.fill(CGRect(x: 0, y: 0, width: 3000, height: 2000))
+		}
+		let data = try #require(image.jpegData(compressionQuality: 0.9))
+		let staging = Task { try await harness.model.setSceneImage(data: data, pixelSize: image.size) }
+		await Task.yield()
+		#expect(await harness.model.cancel())
+		try await staging.value
+		#expect(harness.model.sceneImageDraft == nil)
+		#expect(harness.model.sceneImage == nil)
+		#expect(harness.draftFilenames().isEmpty)
+	}
+
+	@Test func lateAppearanceStageCannotResurrectDismissedItem() async throws {
+		let harness = try CaptureHarness()
+		harness.model.beginItem(atNormalizedPoint: CGPoint(x: 0.4, y: 0.4))
+		harness.model.pendingItem?.name = "Late"
+		let image = UIGraphicsImageRenderer(size: CGSize(width: 2600, height: 1800)).image { context in
+			UIColor.cyan.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2600, height: 1800))
+		}
+		let data = try #require(image.jpegData(compressionQuality: 0.9))
+		let staging = Task { try await harness.model.setPendingAppearance(originalData: data, cutout: nil, preview: image) }
+		await Task.yield()
+		harness.model.dismissPendingItem()
+		try await staging.value
+		#expect(harness.model.pendingItem == nil)
+		#expect(harness.draftFilenames().isEmpty)
+	}
+
     @Test func letterboxTapIsIgnoredAndValidTapCreatesPendingItem() throws {
         let harness = try CaptureHarness()
         harness.model.sceneImageSize = CGSize(width: 200, height: 100)
@@ -27,6 +70,20 @@ struct SceneCaptureViewModelTests {
         #expect(harness.model.beginItem(at: CGPoint(x: 50, y: 75), in: CGSize(width: 200, height: 200)))
         #expect(harness.model.pendingItem?.normalizedPoint == CGPoint(x: 0.25, y: 0.25))
     }
+
+	@Test func markerDragUsesCanvasCoordinatesRatherThanMarkerLocalCoordinates() {
+		let point = MarkerDragMapper.normalizedLocation(
+			CGPoint(x: 300, y: 200),
+			imageSize: CGSize(width: 400, height: 200),
+			containerSize: CGSize(width: 400, height: 400)
+		)
+		#expect(point == CGPoint(x: 0.75, y: 0.5))
+		#expect(MarkerDragMapper.normalizedLocation(
+			CGPoint(x: 22, y: 22),
+			imageSize: CGSize(width: 400, height: 200),
+			containerSize: CGSize(width: 400, height: 400)
+		) == nil)
+	}
 
     @Test func itemNameIsRequiredAndTokensAreTrimmedAndDeduplicated() throws {
         let harness = try CaptureHarness()
@@ -140,7 +197,7 @@ struct SceneCaptureViewModelTests {
 		#expect(harness.model.didFinish == false)
 		#expect(await harness.repository.rollbackCount == 1)
 		#expect(FileManager.default.fileExists(atPath: harness.root.appending(path: "Drafts/\(name)").path))
-		try FileManager.default.removeItem(at: collision)
+		if FileManager.default.fileExists(atPath: collision.path) { try FileManager.default.removeItem(at: collision) }
 		await harness.model.finish()
 		#expect(harness.model.didFinish)
 	}
@@ -174,6 +231,22 @@ struct SceneCaptureViewModelTests {
 		harness.model.reportAppearanceError(ImageStoreError.invalidImage, step: "读取")
 		#expect(harness.model.appearanceErrorMessage?.contains("读取") == true)
 		#expect(harness.model.pendingItem?.name == "护照")
+	}
+
+	@Test func appStartupRecoversCrashAfterDatabaseCommitAndPromotion() async throws {
+		let dependencies = try AppDependencies.testing()
+		let sceneID = UUID()
+		let draft = try await dependencies.imageStore.stageSceneImage(CaptureHarness.testJPEG())
+		try await dependencies.imageStore.prepareCaptureCommit(sceneID: sceneID, drafts: [draft])
+		let finalPath = "Images/\(draft.relativeName)"
+		try await dependencies.itemRepository.saveSceneDraft(SceneDraft(id: sceneID, name: "Crash", imagePath: finalPath, items: []))
+		_ = try await dependencies.imageStore.promote([draft])
+
+		try await dependencies.recoverInterruptedCaptureIfNeeded()
+
+		await #expect(throws: RepositoryError.self) { try await dependencies.sceneRepository.fetchScene(id: sceneID) }
+		#expect(try await dependencies.imageStore.pendingCaptureCommit() == nil)
+		#expect(await dependencies.imageStore.loadImage(relativePath: finalPath) == nil)
 	}
 
 	@Test func cancelingAnAppearanceReplacementKeepsStoredDraftAndDiscardsReplacement() async throws {
@@ -279,12 +352,15 @@ private final class CaptureHarness {
 	}
 
     func stageScene() async throws {
-        let image = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 12)).image { context in
+		try await model.setSceneImage(data: Self.testJPEG(), pixelSize: CGSize(width: 16, height: 12))
+	}
+
+	static func testJPEG() throws -> Data {
+		let image = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 12)).image { context in
             UIColor.orange.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 16, height: 12))
         }
-        let data = try #require(image.jpegData(compressionQuality: 0.9))
-        try await model.setSceneImage(data: data, pixelSize: CGSize(width: 16, height: 12))
+		return try #require(image.jpegData(compressionQuality: 0.9))
     }
 
     func addItem(name: String, point: CGPoint) {

@@ -14,6 +14,10 @@ enum ImageStoreError: Error {
 }
 
 actor ImageStore {
+	struct PendingCaptureCommit: Codable, Sendable, Equatable {
+		let sceneID: UUID
+		let draftNames: [String]
+	}
     struct DraftImage: Sendable {
         let url: URL
         let relativeName: String
@@ -26,6 +30,7 @@ actor ImageStore {
     private let fileManager = FileManager.default
     private var volatileCleanupPaths: Set<String> = []
     private var cleanupBacklogURL: URL { rootDirectory.appending(path: "PendingImageCleanup.json") }
+	private var pendingCaptureCommitURL: URL { rootDirectory.appending(path: "PendingCaptureCommit.json") }
 
     init(rootDirectory: URL) throws {
         let root = rootDirectory.standardizedFileURL
@@ -129,6 +134,23 @@ actor ImageStore {
         }
     }
 
+	/// Reconciles an interrupted/partially rolled-back promotion into a fully retryable Drafts batch.
+	func reconcileToDrafts(_ drafts: [DraftImage]) throws {
+		try verifyOwnedStorage()
+		for draft in drafts {
+			try validate(draft)
+			let final = imagesDirectory.appending(path: draft.relativeName)
+			let hasDraft = fileManager.fileExists(atPath: draft.url.path)
+			let hasFinal = fileManager.fileExists(atPath: final.path)
+			switch (hasDraft, hasFinal) {
+			case (true, true): try fileManager.removeItem(at: final)
+			case (false, true): try fileManager.moveItem(at: final, to: draft.url)
+			case (true, false): break
+			case (false, false): throw ImageStoreError.unsafePath(draft.relativeName)
+			}
+		}
+	}
+
     func discard(_ drafts: [DraftImage]) async {
         guard (try? verifyOwnedStorage()) != nil else { return }
         for draft in drafts {
@@ -137,6 +159,38 @@ actor ImageStore {
             try? fileManager.removeItem(at: draft.url)
         }
     }
+
+	func prepareCaptureCommit(sceneID: UUID, drafts: [DraftImage]) throws {
+		try verifyOwnedStorage()
+		for draft in drafts { try validate(draft) }
+		let record = PendingCaptureCommit(sceneID: sceneID, draftNames: drafts.map(\.relativeName))
+		try JSONEncoder().encode(record).write(to: pendingCaptureCommitURL, options: .atomic)
+	}
+
+	func pendingCaptureCommit() throws -> PendingCaptureCommit? {
+		try verifyOwnedStorage()
+		guard fileManager.fileExists(atPath: pendingCaptureCommitURL.path) else { return nil }
+		let record = try JSONDecoder().decode(PendingCaptureCommit.self, from: Data(contentsOf: pendingCaptureCommitURL))
+		for name in record.draftNames { try validateName(name) }
+		return record
+	}
+
+	func clearPendingCaptureCommit() throws {
+		try verifyOwnedStorage()
+		if fileManager.fileExists(atPath: pendingCaptureCommitURL.path) {
+			try fileManager.removeItem(at: pendingCaptureCommitURL)
+		}
+	}
+
+	func discardFiles(for record: PendingCaptureCommit) async throws {
+		try verifyOwnedStorage()
+		for name in record.draftNames {
+			try validateName(name)
+			let draft = draftsDirectory.appending(path: name)
+			if fileManager.fileExists(atPath: draft.path) { try fileManager.removeItem(at: draft) }
+		}
+		try await delete(relativePaths: Set(record.draftNames.map { "Images/\($0)" }))
+	}
 
     func delete(relativePaths: Set<String>) async throws {
         try verifyOwnedStorage()
@@ -266,14 +320,18 @@ actor ImageStore {
 
     private func validate(_ draft: DraftImage) throws {
         let name = draft.relativeName
-        guard !name.isEmpty, name == URL(fileURLWithPath: name).lastPathComponent,
+		try validateName(name)
+		let expected = draftsDirectory.appending(path: name).standardizedFileURL
+		guard draft.url.standardizedFileURL == expected,
+			  expected.deletingLastPathComponent() == draftsDirectory.standardizedFileURL else {
+			throw ImageStoreError.unsafePath(draft.url.path)
+		}
+	}
+
+	private func validateName(_ name: String) throws {
+		guard !name.isEmpty, name == URL(fileURLWithPath: name).lastPathComponent,
               !name.contains("/"), !name.contains("\\"), name != ".", name != ".." else {
             throw ImageStoreError.unsafePath(name)
-        }
-        let expected = draftsDirectory.appending(path: name).standardizedFileURL
-        guard draft.url.standardizedFileURL == expected,
-              expected.deletingLastPathComponent() == draftsDirectory.standardizedFileURL else {
-            throw ImageStoreError.unsafePath(draft.url.path)
         }
     }
 

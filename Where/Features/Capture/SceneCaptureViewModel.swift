@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Observation
 import UIKit
+import ImageIO
 
 enum SceneCaptureStep: Equatable {
     case source
@@ -64,6 +65,9 @@ final class SceneCaptureViewModel {
     private(set) var isProcessingImage = false
     private(set) var didFinish = false
 	private(set) var hasCommittedGraphPendingCompensation = false
+	private var sceneImageGeneration = UUID()
+	private var appearanceGeneration = UUID()
+	private var isCancelled = false
 
     var hasStagedImages: Bool { !allDraftImages.isEmpty }
 	var stagedImageCount: Int { allDraftImages.count }
@@ -80,11 +84,29 @@ final class SceneCaptureViewModel {
     }
 
     func setSceneImage(data: Data, pixelSize: CGSize? = nil) async throws {
-        guard !isProcessingImage else { return }
+		guard !isCancelled, !isProcessingImage else { return }
+		let generation = UUID()
+		sceneImageGeneration = generation
         isProcessingImage = true
-        defer { isProcessingImage = false }
+		defer { isProcessingImage = false }
         let staged = try await imageStore.stageSceneImage(data)
-		let image = await Task.detached(priority: .userInitiated) { UIImage(data: data) }.value
+		guard sceneImageGeneration == generation else {
+			await imageStore.discard([staged])
+			return
+		}
+		let image = await Task.detached(priority: .userInitiated) {
+			guard let source = CGImageSourceCreateWithURL(staged.url as CFURL, nil),
+				  let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+					kCGImageSourceCreateThumbnailFromImageAlways: true,
+					kCGImageSourceCreateThumbnailWithTransform: true,
+					kCGImageSourceThumbnailMaxPixelSize: 1600,
+				  ] as CFDictionary) else { return nil as UIImage? }
+			return UIImage(cgImage: cgImage)
+		}.value
+		guard sceneImageGeneration == generation else {
+			await imageStore.discard([staged])
+			return
+		}
         guard let image else {
             await imageStore.discard([staged])
             throw ImageStoreError.invalidImage
@@ -172,6 +194,7 @@ final class SceneCaptureViewModel {
     }
 
     func dismissPendingItem() {
+		appearanceGeneration = UUID()
         let pending = pendingItem
         pendingItem = nil
         editingItemID = nil
@@ -200,6 +223,11 @@ final class SceneCaptureViewModel {
 
     func setPendingAppearance(originalData: Data, cutout: CGImage?, preview: UIImage) async throws {
         guard var pending = pendingItem else { return }
+		let generation = UUID()
+		appearanceGeneration = generation
+		let pendingID = pending.id
+		isProcessingImage = true
+		defer { isProcessingImage = false }
         let original = try await imageStore.stageAppearanceOriginal(originalData)
         var cutoutDraft: ImageStore.DraftImage?
         do {
@@ -208,6 +236,12 @@ final class SceneCaptureViewModel {
             await imageStore.discard([original])
             throw error
         }
+		guard appearanceGeneration == generation, pendingItem?.id == pendingID else {
+			var lateDrafts = [original]
+			if let cutoutDraft { lateDrafts.append(cutoutDraft) }
+			await imageStore.discard(lateDrafts)
+			return
+		}
 		let stored = items.first(where: { $0.id == pending.id })
 		let old: [ImageStore.DraftImage] = [pending.appearanceOriginal, pending.appearanceCutout].compactMap { draft -> ImageStore.DraftImage? in
 			guard let draft else { return nil }
@@ -235,10 +269,12 @@ final class SceneCaptureViewModel {
 			paths: pathByName
 		)
         do {
+			try await imageStore.prepareCaptureCommit(sceneID: sceneID, drafts: staged)
 			try await repository.saveSceneDraft(databaseDraft)
 			hasCommittedGraphPendingCompensation = true
             do {
 				_ = try await imageStore.promote(staged)
+				try await imageStore.clearPendingCaptureCommit()
 				hasCommittedGraphPendingCompensation = false
                 didFinish = true
                 self.sceneImageDraft = nil
@@ -249,8 +285,16 @@ final class SceneCaptureViewModel {
             } catch {
 				let promotionError = error
 				do {
+					try await imageStore.reconcileToDrafts(staged)
+				} catch {
+					saveErrorMessage = "图片整理中断，恢复草稿尚未完成。所有路径已记录，请重试保存或取消以安全清理。"
+					isSaving = false
+					return
+				}
+				do {
 					try await repository.rollbackSceneDraft(id: sceneID)
 					hasCommittedGraphPendingCompensation = false
+					try await imageStore.clearPendingCaptureCommit()
 				} catch {
 					saveErrorMessage = "图片整理失败，数据库补偿也未完成。草稿和已提交记录均已保留；请重试保存，或取消以再次尝试安全清理。"
                     isSaving = false
@@ -259,6 +303,7 @@ final class SceneCaptureViewModel {
 				throw promotionError
             }
         } catch {
+			if !hasCommittedGraphPendingCompensation { try? await imageStore.clearPendingCaptureCommit() }
             saveErrorMessage = "保存失败，草稿已保留，可以重试。\n\(error.localizedDescription)"
         }
         isSaving = false
@@ -267,17 +312,26 @@ final class SceneCaptureViewModel {
 	@discardableResult
     func cancel() async -> Bool {
 		guard !isSaving else { return false }
+		isCancelled = true
+		sceneImageGeneration = UUID()
+		appearanceGeneration = UUID()
 		if hasCommittedGraphPendingCompensation {
 			do {
 				try await repository.rollbackSceneDraft(id: sceneID)
+				if let record = try await imageStore.pendingCaptureCommit() {
+					try await imageStore.discardFiles(for: record)
+				}
+				try await imageStore.clearPendingCaptureCommit()
 				hasCommittedGraphPendingCompensation = false
 			} catch {
 				saveErrorMessage = "暂时无法取消：已提交记录尚未安全清理。草稿仍完整保留，请稍后重试取消或重新保存。\n\(error.localizedDescription)"
 				return false
 			}
 		}
-        await imageStore.discard(allDraftImages)
+		await imageStore.discard(allDraftImages)
         sceneImageDraft = nil
+		sceneImage = nil
+		sceneImageSize = .zero
         items.removeAll()
         pendingItem = nil
 		return true

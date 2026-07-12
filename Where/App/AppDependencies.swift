@@ -10,6 +10,7 @@ struct AppDependencies: Sendable {
         let task = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             let dependencies = try makeProduction()
+			try await dependencies.recoverInterruptedCaptureIfNeeded()
             try Task.checkCancellation()
             return dependencies
         }
@@ -68,4 +69,15 @@ struct AppDependencies: Sendable {
             )
         )
     }
+
+	func recoverInterruptedCaptureIfNeeded() async throws {
+		guard let record = try await imageStore.pendingCaptureCommit() else { return }
+		do {
+			try await itemRepository.rollbackSceneDraft(id: record.sceneID)
+		} catch RepositoryError.notFound {
+			// A prepared journal may have been persisted just before the database write.
+		}
+		try await imageStore.discardFiles(for: record)
+		try await imageStore.clearPendingCaptureCommit()
+	}
 }

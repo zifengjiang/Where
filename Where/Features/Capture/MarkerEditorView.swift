@@ -1,6 +1,13 @@
 import SwiftUI
 
+struct MarkerDragMapper {
+	static func normalizedLocation(_ location: CGPoint, imageSize: CGSize, containerSize: CGSize) -> CGPoint? {
+		AspectFitGeometry(imageSize: imageSize, containerSize: containerSize).normalizedPoint(for: location)
+	}
+}
+
 struct MarkerEditorView: View {
+	private static let canvasSpace = "marker-editor-canvas"
     @Bindable var model: SceneCaptureViewModel
     let onFinish: () -> Void
     @State private var selectedItemID: UUID?
@@ -20,6 +27,7 @@ struct MarkerEditorView: View {
                         }
                     }
                     .contentShape(Rectangle())
+					.coordinateSpace(.named(Self.canvasSpace))
                     .onTapGesture { point in
                         if model.beginItem(at: point, in: proxy.size) { selectedItemID = nil }
                     }
@@ -71,8 +79,12 @@ struct MarkerEditorView: View {
 		}
         .position(geometry.viewPoint(for: item.normalizedPoint))
         .gesture(
-            DragGesture(minimumDistance: 4).onChanged { value in
-                guard let point = geometry.normalizedPoint(for: value.location) else { return }
+			DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.canvasSpace)).onChanged { value in
+				guard let point = MarkerDragMapper.normalizedLocation(
+					value.location,
+					imageSize: geometry.imageSize,
+					containerSize: geometry.containerSize
+				) else { return }
                 selectedItemID = item.id
                 model.moveItem(id: item.id, to: point)
             }

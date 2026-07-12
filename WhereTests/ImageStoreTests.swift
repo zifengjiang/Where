@@ -202,6 +202,42 @@ struct ImageStoreTests {
         #expect(await reopened.hasPendingCleanup() == false)
     }
 
+	@Test func pendingCaptureJournalSurvivesRelaunchAndCleansPromotedFiles() async throws {
+		let (store, root) = try makeStore(); defer { remove(root) }
+		let sceneID = UUID()
+		let draft = try await store.stageSceneImage(jpeg(width: 20, height: 10))
+		try await store.prepareCaptureCommit(sceneID: sceneID, drafts: [draft])
+		_ = try await store.promote([draft])
+
+		let reopened = try ImageStore(rootDirectory: root)
+		let record = try #require(try await reopened.pendingCaptureCommit())
+		#expect(record.sceneID == sceneID)
+		#expect(record.draftNames == [draft.relativeName])
+		try await reopened.discardFiles(for: record)
+		try await reopened.clearPendingCaptureCommit()
+
+		#expect(try await reopened.pendingCaptureCommit() == nil)
+		#expect(!FileManager.default.fileExists(atPath: root.appending(path: "Images/\(draft.relativeName)").path))
+	}
+
+	@Test func reconcileToDraftsRepairsMixedPartialPromotionRollback() async throws {
+		let (store, root) = try makeStore(); defer { remove(root) }
+		let a = try await store.stageSceneImage(jpeg(width: 20, height: 10))
+		let b = try await store.stageSceneImage(jpeg(width: 21, height: 11))
+		_ = try await store.promote([a, b])
+		try FileManager.default.moveItem(
+			at: root.appending(path: "Images/\(a.relativeName)"),
+			to: a.url
+		)
+
+		try await store.reconcileToDrafts([a, b])
+
+		#expect(FileManager.default.fileExists(atPath: a.url.path))
+		#expect(FileManager.default.fileExists(atPath: b.url.path))
+		#expect(!FileManager.default.fileExists(atPath: root.appending(path: "Images/\(a.relativeName)").path))
+		#expect(!FileManager.default.fileExists(atPath: root.appending(path: "Images/\(b.relativeName)").path))
+	}
+
     @Test func thumbnailDownsamplesLargeSourceToRequestedPixelBound() async throws {
         let cache = SceneThumbnailCache(maximumCost: 32 * 1_024 * 1_024)
         let asset = SceneImageAsset(data: try jpeg(width: 3072, height: 1800), revision: 1)

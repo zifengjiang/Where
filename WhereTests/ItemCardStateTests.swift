@@ -115,12 +115,16 @@ struct ItemCardStateTests {
         model.load(identity: second) {
             counter.increment(); return Self.stubResult(width: 20)
         }
-        try? await Task.sleep(for: .milliseconds(150))
+		for _ in 0..<100 where model.identity != second {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
         #expect(model.identity == second)
         #expect(model.result?.path.boundingBox.width == 20)
 
         model.load(identity: second) { counter.increment(); return Self.stubResult(width: 30) }
-        try? await Task.sleep(for: .milliseconds(30))
+		for _ in 0..<50 where counter.value != 2 {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
         #expect(counter.value == 2)
     }
 
@@ -135,7 +139,9 @@ struct ItemCardStateTests {
         }
         try? await Task.sleep(for: .milliseconds(20))
         model.load(identity: fresh) { Self.stubResult(width: 20) }
-        try? await Task.sleep(for: .milliseconds(100))
+		for _ in 0..<100 where model.identity != fresh {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
         #expect(completed.value == 0)
         #expect(model.identity == fresh)
         #expect(model.result?.path.boundingBox.width == 20)
@@ -167,7 +173,9 @@ struct ItemCardStateTests {
         let model = ItemCardLayoutModel(cache: ItemCardLayoutCache())
         let identity = ItemCardLayoutIdentity(itemID: UUID(), note: "fallback note", imageRevision: "ci-v1", size: CGSize(width: 120, height: 160), sizeCategory: .large)
         model.load(identity: identity, alphaImage: image.cgImage, fontSize: 14, lineHeight: 18, sizeCategory: .large)
-        try? await Task.sleep(for: .milliseconds(30))
+		for _ in 0..<50 where model.result == nil {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
         #expect(model.result?.usesFallbackCard == true)
         #expect(model.identity == identity)
     }
@@ -179,9 +187,15 @@ struct ItemCardStateTests {
         let first = ItemCardLayoutIdentity(itemID: itemID, note: "fallback", imageRevision: "ci-v1", size: size, sizeCategory: .large)
         let second = ItemCardLayoutIdentity(itemID: itemID, note: "fallback", imageRevision: "ci-v2", size: size, sizeCategory: .large)
         model.load(identity: first, alphaImage: nil, fontSize: 14, lineHeight: 18, sizeCategory: .large)
-        try? await Task.sleep(for: .milliseconds(30))
+		for _ in 0..<50 {
+			if await cache.value(for: first) != nil { break }
+			try? await Task.sleep(for: .milliseconds(10))
+		}
         model.load(identity: second, alphaImage: nil, fontSize: 14, lineHeight: 18, sizeCategory: .large)
-        try? await Task.sleep(for: .milliseconds(30))
+		for _ in 0..<50 {
+			if await cache.value(for: second) != nil { break }
+			try? await Task.sleep(for: .milliseconds(10))
+		}
         #expect(await cache.count == 2)
         #expect(await cache.value(for: first) != nil)
         #expect(await cache.value(for: second) != nil)

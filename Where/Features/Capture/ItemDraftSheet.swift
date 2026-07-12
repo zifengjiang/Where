@@ -51,7 +51,9 @@ struct ItemDraftSheet: View {
             .navigationTitle("记录物品")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { model.dismissPendingItem(); dismiss() } }
+				ToolbarItem(placement: .cancellationAction) {
+					Button("取消") { model.dismissPendingItem(); dismiss() }.disabled(model.isProcessingImage)
+				}
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { if model.commitPendingItem() { dismiss() } }.disabled(isLoadingPhoto)
                 }
