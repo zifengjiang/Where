@@ -6,6 +6,7 @@ import UIKit
 
 @Test func captureCanvasUsesWhereSemanticBackground() {
     #expect(CaptureCanvasPolicy.backgroundAssetName == "WhereCanvas")
+    #expect(CaptureCanvasPolicy.fieldSurfaceAssetName == "WhereSurface")
 }
 
 @MainActor

@@ -4,6 +4,7 @@ import UIKit
 
 enum CaptureCanvasPolicy {
     static let backgroundAssetName = "WhereCanvas"
+    static let fieldSurfaceAssetName = "WhereSurface"
 }
 
 struct SceneDraftView: View {
@@ -88,8 +89,12 @@ struct SceneDraftView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("场景名称").font(.headline)
-                    TextField("例如：玄关", text: $model.sceneName)
-                        .textFieldStyle(.roundedBorder).textContentType(.location).submitLabel(.next)
+                    TextField("", text: $model.sceneName, prompt: Text("例如：玄关").foregroundStyle(WhereTheme.ink.opacity(0.68)))
+                        .padding(.horizontal, 12).padding(.vertical, 11)
+                        .foregroundStyle(WhereTheme.ink).tint(WhereTheme.pin)
+                        .background(WhereTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay { RoundedRectangle(cornerRadius: 10).stroke(WhereTheme.ink.opacity(0.35)) }
+                        .textContentType(.location).submitLabel(.next)
                         .onSubmit { _ = model.beginMarking() }
                 }.frame(maxWidth: .infinity, alignment: .leading)
 
@@ -148,3 +153,21 @@ struct SceneDraftView: View {
         }
     }
 }
+
+#if DEBUG
+private struct CaptureFormPreview: View {
+    @State private var name = ""
+    let hasPhoto: Bool
+    var body: some View {
+        NavigationStack {
+            ScrollView { VStack(spacing: 20) {
+                ZStack { RoundedRectangle(cornerRadius: 20).fill(WhereTheme.surface).aspectRatio(4/3, contentMode: .fit); VStack { Image(systemName: hasPhoto ? "photo.fill" : "camera").font(.largeTitle).foregroundStyle(.secondary); Text(hasPhoto ? "玄关照片" : "添加场景照片").font(.headline); Text(hasPhoto ? "轻点更换" : "拍照或从相册选择").foregroundStyle(.secondary) } }
+                VStack(alignment: .leading, spacing: 8) { Text("场景名称").font(.headline); TextField("", text: $name, prompt: Text("例如：玄关").foregroundStyle(WhereTheme.ink.opacity(0.68))).foregroundStyle(WhereTheme.ink).padding(12).background(WhereTheme.surface, in: RoundedRectangle(cornerRadius: 10)).overlay { RoundedRectangle(cornerRadius: 10).stroke(WhereTheme.ink.opacity(0.35)) } }
+            }.padding() }.safeAreaInset(edge: .bottom) { Button { } label: { Text("下一步：标记物品").frame(maxWidth: .infinity) }.buttonStyle(.glassProminent).controlSize(.large).padding().background(WhereTheme.canvas) }.navigationTitle("添加场景").background(WhereTheme.canvas)
+        }
+    }
+}
+#Preview("Capture · Empty Form · Light") { CaptureFormPreview(hasPhoto: false) }
+#Preview("Capture · Photo Selected · Dark") { CaptureFormPreview(hasPhoto: true).preferredColorScheme(.dark) }
+#Preview("Capture · Form · AX") { CaptureFormPreview(hasPhoto: false).environment(\.dynamicTypeSize, .accessibility2) }
+#endif

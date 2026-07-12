@@ -349,3 +349,35 @@ private struct AppearanceCard: View {
         let retryToken: Int
     }
 }
+
+#if DEBUG
+private enum ItemsPreviewState { case empty, loading, error, content, selected }
+private struct ItemsStatePreview: View {
+    let state: ItemsPreviewState
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch state {
+                case .empty: ContentUnavailableView("还没有物品", systemImage: "shippingbox", description: Text("在场景照片上添加定位点后，它们会出现在这里。"))
+                case .loading: ProgressView("正在载入物品…")
+                case .error: VStack { ContentUnavailableView("无法载入物品", systemImage: "exclamationmark.triangle"); Button("重试") {}.buttonStyle(.glassProminent) }
+                case .content, .selected:
+                    ScrollView { VStack(spacing: 16) {
+                        if state == .selected {
+                            ZStack { RoundedRectangle(cornerRadius: 20).fill(WhereTheme.orange.opacity(0.16)).aspectRatio(16/10, contentMode: .fit); VStack { Image(systemName: "location.circle.fill").font(.largeTitle).foregroundStyle(WhereTheme.pin); Text("备用钥匙位于玄关").font(.headline) } }
+                        } else { ContentUnavailableView("选择一个物品查看它的位置", systemImage: "location.magnifyingglass").frame(height: 148) }
+                        ForEach(["备用钥匙", "充电线", "旅行药包"], id: \.self) { name in
+                            HStack { RoundedRectangle(cornerRadius: 12).fill(WhereTheme.orange.opacity(0.15)).frame(width: 48, height: 48).overlay { Image(systemName: "shippingbox") }; VStack(alignment: .leading) { Text(name).font(.headline); Text("玄关 · 常用").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: state == .selected && name == "备用钥匙" ? "checkmark.circle.fill" : "location.fill").foregroundStyle(state == .selected && name == "备用钥匙" ? WhereTheme.pin : .secondary) }.padding(12).background(WhereTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                        }
+                    }.padding() }
+                }
+            }.navigationTitle("所有物品").background(WhereTheme.canvas)
+        }
+    }
+}
+#Preview("Items · Empty · Light") { ItemsStatePreview(state: .empty) }
+#Preview("Items · Loading · Dark") { ItemsStatePreview(state: .loading).preferredColorScheme(.dark) }
+#Preview("Items · Error · AX") { ItemsStatePreview(state: .error).environment(\.dynamicTypeSize, .accessibility2) }
+#Preview("Items · Content") { ItemsStatePreview(state: .content) }
+#Preview("Items · Selected Inline Location · Dark") { ItemsStatePreview(state: .selected).preferredColorScheme(.dark) }
+#endif

@@ -83,3 +83,34 @@ private struct SceneCard: View {
         image = await SceneThumbnailCache.shared.thumbnail(path: scene.imagePath, asset: asset, maxPixelSize: Int(420 * displayScale))?.image
     } }
 }
+
+#if DEBUG
+private enum ScenesPreviewState { case empty, loading, error, content }
+private struct ScenesStatePreview: View {
+    let state: ScenesPreviewState
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch state {
+                case .empty: ContentUnavailableView("还没有场景", systemImage: "photo.on.rectangle", description: Text("添加一个场景，开始记录物品的位置。"))
+                case .loading: ProgressView("正在载入场景…")
+                case .error: VStack(spacing: 16) { ContentUnavailableView("无法载入场景", systemImage: "exclamationmark.triangle", description: Text("场景仍保存在设备上。")); Button("重试") {}.buttonStyle(.glassProminent) }
+                case .content:
+                    ScrollView { LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                        ForEach([("玄关", 6), ("储物间", 12)], id: \.0) { name, count in
+                            VStack(alignment: .leading, spacing: 8) {
+                                ZStack(alignment: .bottomLeading) { RoundedRectangle(cornerRadius: 20).fill(WhereTheme.orange.opacity(0.18)).aspectRatio(4/3, contentMode: .fit); Text("\(count) 件物品").font(.caption.bold()).padding(8).background(.regularMaterial, in: Capsule()).padding(8) }
+                                Text(name).font(.headline)
+                            }
+                        }
+                    }.padding() }
+                }
+            }.navigationTitle("场景").background(WhereTheme.canvas)
+        }
+    }
+}
+#Preview("Scenes · Empty · Light") { ScenesStatePreview(state: .empty) }
+#Preview("Scenes · Loading · Dark") { ScenesStatePreview(state: .loading).preferredColorScheme(.dark) }
+#Preview("Scenes · Error · AX") { ScenesStatePreview(state: .error).environment(\.dynamicTypeSize, .accessibility2) }
+#Preview("Scenes · Content") { ScenesStatePreview(state: .content) }
+#endif
