@@ -208,6 +208,16 @@ final class SceneCaptureViewModel {
         Task { await imageStore.discard(drafts) }
     }
 
+	func pendingItemValue(for expectedID: UUID, fallback: CaptureItemDraft) -> CaptureItemDraft {
+		guard let pendingItem, pendingItem.id == expectedID else { return fallback }
+		return pendingItem
+	}
+
+	func updatePendingItem(_ value: CaptureItemDraft, expectedID: UUID) {
+		guard pendingItem?.id == expectedID else { return }
+		pendingItem = value
+	}
+
     func moveItem(id: UUID, to point: CGPoint) {
         guard point.x.isFinite, point.y.isFinite,
               let index = items.firstIndex(where: { $0.id == id }) else { return }

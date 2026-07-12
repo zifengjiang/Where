@@ -114,10 +114,10 @@ struct ItemDraftSheet: View {
     }
 
     private var pendingBinding: Binding<CaptureItemDraft>? {
-        guard model.pendingItem != nil else { return nil }
+		guard let snapshot = model.pendingItem else { return nil }
         return Binding(
-            get: { model.pendingItem! },
-            set: { model.pendingItem = $0 }
+			get: { model.pendingItemValue(for: snapshot.id, fallback: snapshot) },
+			set: { model.updatePendingItem($0, expectedID: snapshot.id) }
         )
     }
 

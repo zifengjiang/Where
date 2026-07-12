@@ -116,6 +116,20 @@ struct SceneCaptureViewModelTests {
 		#expect(harness.draftFilenames().isEmpty)
 	}
 
+	@Test func pendingItemFormSnapshotSurvivesDismissWithoutResurrectingDraft() throws {
+		let harness = try CaptureHarness()
+		harness.model.beginItem(atNormalizedPoint: CGPoint(x: 0.4, y: 0.4))
+		let snapshot = try #require(harness.model.pendingItem)
+
+		harness.model.dismissPendingItem()
+
+		#expect(harness.model.pendingItemValue(for: snapshot.id, fallback: snapshot) == snapshot)
+		var editedSnapshot = snapshot
+		editedSnapshot.name = "不应复活"
+		harness.model.updatePendingItem(editedSnapshot, expectedID: snapshot.id)
+		#expect(harness.model.pendingItem == nil)
+	}
+
     @Test func letterboxTapIsIgnoredAndValidTapCreatesPendingItem() throws {
         let harness = try CaptureHarness()
         harness.model.sceneImageSize = CGSize(width: 200, height: 100)
