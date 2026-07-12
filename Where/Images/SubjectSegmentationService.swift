@@ -62,8 +62,8 @@ struct SubjectSelectionState: Equatable, Sendable {
             let isSelected = candidate.id == selectedID
             return SubjectAccessibilityCandidate(
                 candidateID: candidate.id,
-                label: String(localized: "Detected object \(index + 1)"),
-                value: isSelected ? String(localized: "Selected") : String(localized: "Not selected"),
+                label: "主体 \(index + 1)",
+                value: isSelected ? "已选择" : "未选择",
                 isSelected: isSelected
             )
         }
@@ -99,10 +99,10 @@ enum SubjectSegmentationError: Error, Equatable, LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: "Subject extraction isn't supported on this device."
-        case .noSubjects: "No separate subject was found in this photo."
-        case .subjectUnavailable: "That subject is no longer available."
-        case .analysisFailed: "The photo couldn't be analyzed."
+        case .unsupported: "这台设备不支持物品主体分割。"
+        case .noSubjects: "未能在照片中找到可分离的物品主体。"
+        case .subjectUnavailable: "所选主体已不可用，请重新选择。"
+        case .analysisFailed: "无法分析这张照片。"
         }
     }
 }

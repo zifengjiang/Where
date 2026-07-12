@@ -84,9 +84,9 @@ struct SubjectSelectionTests {
         let descriptors = state.accessibilityCandidates
 
         #expect(descriptors.map(\.candidateID) == ["second", "first"])
-        #expect(descriptors.map(\.label) == ["Detected object 1", "Detected object 2"])
+        #expect(descriptors.map(\.label) == ["主体 1", "主体 2"])
         #expect(descriptors.map(\.isSelected) == [true, false])
-        #expect(descriptors.map(\.value) == ["Selected", "Not selected"])
+        #expect(descriptors.map(\.value) == ["已选择", "未选择"])
     }
 
     @Test @MainActor func segmentationErrorsPassThroughErrorMapping() {

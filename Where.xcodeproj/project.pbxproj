@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		ABCDEF000000000000000005 /* WhereTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000006 /* WhereTheme.swift */; };
 		ABCDEF000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000002 /* Assets.xcassets */; };
 		00480643D2DC0EADDE107D31 /* ScenesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E7F243729A280AD904AFB6 /* ScenesViewModel.swift */; };
 		0494E714A3ED20E208A540F4 /* ImageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10ADF3E405EAF4492B451CC7 /* ImageStoreTests.swift */; };
@@ -76,6 +77,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		ABCDEF000000000000000006 /* WhereTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereTheme.swift; sourceTree = "<group>"; };
 		ABCDEF000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		033340F666E38C1D771D85D8 /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		097516BC87680600490F0BA5 /* SilhouetteTextLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SilhouetteTextLayout.swift; sourceTree = "<group>"; };
@@ -253,8 +255,17 @@
 				9EBF9CEED0107C48F5D54459 /* Features */,
 				810996CB6C7CC55E1974A6F1 /* Images */,
 				ABCDEF000000000000000003 /* Resources */,
+				ABCDEF000000000000000007 /* DesignSystem */,
 			);
 			path = Where;
+			sourceTree = "<group>";
+		};
+		ABCDEF000000000000000007 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				ABCDEF000000000000000006 /* WhereTheme.swift */,
+			);
+			path = DesignSystem;
 			sourceTree = "<group>";
 		};
 		ABCDEF000000000000000003 /* Resources */ = {
@@ -461,6 +472,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABCDEF000000000000000005 /* WhereTheme.swift in Sources */,
 				702A187123580508564B4DE5 /* AppDatabase.swift in Sources */,
 				448EC3CAF4ABF0A8ECDC28F7 /* AppDependencies.swift in Sources */,
 				1740E9EF612CAE1D904AA87E /* AspectFitGeometry.swift in Sources */,

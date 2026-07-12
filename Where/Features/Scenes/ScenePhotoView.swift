@@ -32,6 +32,10 @@ enum ScenePinPresentation {
     static let selectedDiameter: CGFloat = 28
 }
 
+enum ScenePinLabelPolicy {
+    static func showsOverlay(isAccessibilitySize: Bool) -> Bool { !isAccessibilitySize }
+}
+
 struct ScenePinLabelLayout: Equatable {
     static func center(anchor: CGPoint, labelSize: CGSize, viewport: CGSize, margin: CGFloat = 8) -> CGPoint {
         let halfWidth = labelSize.width / 2
@@ -65,6 +69,8 @@ enum ScenePinInteraction: Equatable {
 }
 
 struct ScenePhotoView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     let image: UIImage
     let pins: [ScenePin]
     let selectedItemID: UUID?
@@ -93,14 +99,13 @@ struct ScenePhotoView: View {
                         marker(for: pin, selected: pin.id == selectedItemID)
                             .position(point)
                     }
-                    if pin.id == selectedItemID {
+                    if pin.id == selectedItemID && ScenePinLabelPolicy.showsOverlay(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize) {
                         let labelSize = CGSize(width: min(220, max(80, proxy.size.width - 16)), height: 58)
                         Text(pin.name)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
+                            .lineLimit(3)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .frame(width: labelSize.width, height: labelSize.height)
@@ -129,6 +134,9 @@ struct ScenePhotoView: View {
                 .stroke(selected ? Color.white : Color.black.opacity(0.65), lineWidth: selected ? 3 : 2)
                 .frame(width: selected ? ScenePinPresentation.selectedDiameter : ScenePinPresentation.normalDiameter,
                        height: selected ? ScenePinPresentation.selectedDiameter : ScenePinPresentation.normalDiameter)
+            if selected && differentiateWithoutColor {
+                Image(systemName: "checkmark").font(.caption2.bold()).foregroundStyle(.white)
+            }
         }
         .frame(width: ScenePinLayout.anchorSize.width, height: ScenePinLayout.anchorSize.height)
         .contentShape(Rectangle())
@@ -147,23 +155,23 @@ struct ScenePhotoView: View {
     }
 }
 
-#Preview("Portrait phone") {
+#Preview("竖屏") {
     ScenePhotoView(
         image: ScenePhotoPreviewFixture.image,
         pins: ScenePhotoPreviewFixture.pins,
         selectedItemID: ScenePhotoPreviewFixture.pins.first?.id,
-        imageAccessibilityLabel: "Room scene photo"
+        imageAccessibilityLabel: "房间场景照片"
     )
     .frame(width: 393, height: 852)
     .background(.black)
 }
 
-#Preview("Landscape device") {
+#Preview("横屏") {
     ScenePhotoView(
         image: ScenePhotoPreviewFixture.image,
         pins: ScenePhotoPreviewFixture.pins,
         selectedItemID: ScenePhotoPreviewFixture.pins.last?.id,
-        imageAccessibilityLabel: "Room scene photo"
+        imageAccessibilityLabel: "房间场景照片"
     )
     .frame(width: 852, height: 393)
     .background(.black)
@@ -179,7 +187,7 @@ private enum ScenePhotoPreviewFixture {
     }
 
     static let pins = [
-        ScenePin(id: UUID(), name: "Keys", locationNote: "On the left shelf", normalizedPoint: CGPoint(x: 0.25, y: 0.35)),
-        ScenePin(id: UUID(), name: "Headphones", locationNote: "Beside the monitor", normalizedPoint: CGPoint(x: 0.72, y: 0.62)),
+        ScenePin(id: UUID(), name: "钥匙", locationNote: "左侧架子上", normalizedPoint: CGPoint(x: 0.25, y: 0.35)),
+        ScenePin(id: UUID(), name: "耳机", locationNote: "显示器旁边", normalizedPoint: CGPoint(x: 0.72, y: 0.62)),
     ]
 }

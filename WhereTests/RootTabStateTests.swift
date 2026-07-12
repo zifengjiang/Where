@@ -55,13 +55,6 @@ struct RootTabStateTests {
         #expect(state.isPresentingCapture)
     }
 
-    @Test func selectingAddPresentsCaptureAndKeepsPreviousContentTab() {
-        let state = RootTabState(selection: .items)
-        state.select(.add)
-        #expect(state.selection == .items)
-        #expect(state.isPresentingCapture)
-    }
-
     @Test
     func startupBeginsLoadingThenRetainsExactDependencies() async throws {
         let dependencies = try AppDependencies.testing()

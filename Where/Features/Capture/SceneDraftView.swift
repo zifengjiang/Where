@@ -64,11 +64,14 @@ struct SceneDraftView: View {
         return ScrollView {
             VStack(spacing: 20) {
                 Button { isShowingSourceChoices = true } label: {
-                    Group {
+                    ZStack(alignment: .bottomTrailing) {
                         if let image = model.sceneImage {
                             Image(uiImage: image).resizable().scaledToFit()
+                            Label("更换", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.callout.weight(.semibold)).padding(10)
+                                .glassEffect(.regular.interactive(), in: .capsule).padding(12)
                         } else {
-                            ContentUnavailableView("选择场景照片", systemImage: "camera", description: Text("拍照或从相册选择"))
+                            ContentUnavailableView("添加场景照片", systemImage: "camera", description: Text("拍照或从相册选择"))
                         }
                     }
                     .frame(maxWidth: .infinity, minHeight: 240)
@@ -77,24 +80,29 @@ struct SceneDraftView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(model.sceneImage == nil ? "选择场景照片" : "更换场景照片")
 
-                TextField("场景名称，例如：玄关", text: $model.sceneName)
-                    .textFieldStyle(.roundedBorder)
-                    .textContentType(.location)
-                    .submitLabel(.next)
-                    .onSubmit { _ = model.beginMarking() }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("场景名称").font(.headline)
+                    TextField("例如：玄关", text: $model.sceneName)
+                        .textFieldStyle(.roundedBorder).textContentType(.location).submitLabel(.next)
+                        .onSubmit { _ = model.beginMarking() }
+                }.frame(maxWidth: .infinity, alignment: .leading)
 
                 if let message = model.validationMessage ?? model.imageErrorMessage {
                     Text(message).font(.callout).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Button("开始标记物品") { _ = model.beginMarking() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(model.sceneImage == nil || model.isProcessingImage)
             }
             .padding()
         }
-        .overlay { if model.isProcessingImage { ProgressView("正在处理照片…").padding().glassEffect() } }
+        .safeAreaInset(edge: .bottom) {
+            Button { _ = model.beginMarking() } label: {
+                Text("下一步：标记物品").frame(maxWidth: .infinity)
+            }
+                .buttonStyle(.glassProminent).controlSize(.large)
+                .disabled(model.sceneImage == nil || model.isProcessingImage).padding()
+                .background(.bar)
+        }
+        .overlay { if model.isProcessingImage { WhereGlassHUD { ProgressView("正在处理照片…") } } }
     }
 
     private var cancelButton: some View {

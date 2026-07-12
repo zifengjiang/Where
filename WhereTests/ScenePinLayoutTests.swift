@@ -20,6 +20,11 @@ import Testing
     #expect(!MarkerCompletionPolicy.requiresEmptyConfirmation(itemCount: 1))
 }
 
+@Test func selectedPinLabelMovesOutOfPhotoAtAccessibilitySizes() {
+    #expect(ScenePinLabelPolicy.showsOverlay(isAccessibilitySize: false))
+    #expect(!ScenePinLabelPolicy.showsOverlay(isAccessibilitySize: true))
+}
+
 struct ScenePinLayoutTests {
     @Test func selectedLabelStaysInsideViewportAtEveryCorner() {
         let viewport = CGSize(width: 320, height: 480)

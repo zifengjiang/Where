@@ -240,7 +240,7 @@ struct ItemCardView: View {
             } else if let detailsTitle = presentation.detailsTitle {
                 Button(detailsTitle) { state.handle(.fullNote) }
                     .font(.caption).buttonStyle(.borderedProminent).tint(.brown)
-                    .accessibilityHint("Opens the full note without flipping the card")
+                    .accessibilityHint("不翻转卡片，直接打开完整备忘")
             }
         }
         .task(id: identity) {
@@ -248,7 +248,7 @@ struct ItemCardView: View {
                              fontSize: metrics.fontSize, lineHeight: metrics.lineHeight, sizeCategory: category)
         }
         .onChange(of: presentation.canPresentFullNote) { _, canPresent in state.noteOverflowed = canPresent }
-        .accessibilityLabel("\(item.name), note: \(item.note ?? "No note"). \(ItemCardState.createdAtText(item.createdAt))")
+        .accessibilityLabel("\(item.name)，备忘：\(item.note ?? "无备忘")。\(ItemCardState.createdAtText(item.createdAt))")
         .accessibilityHint(ItemCardState.accessibilityHint(for: .flipCard, side: .back))
         .accessibilityAddTraits(.isButton)
     }

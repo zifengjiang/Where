@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct ItemDraftSheet: View {
+    private enum Field: Hashable { case name }
     @Environment(\.dismiss) private var dismiss
     @Bindable var model: SceneCaptureViewModel
     @State private var appearanceItem: PhotosPickerItem?
@@ -14,20 +15,22 @@ struct ItemDraftSheet: View {
 	@State private var isShowingCamera = false
 	@State private var isShowingCameraAlert = false
 	@State private var cameraState: CameraAccessState = .available
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         NavigationStack {
             Form {
                 if let binding = pendingBinding {
-                    Section("物品") {
-                        TextField("名称（必填）", text: binding.name)
-                        TextField("别名，用逗号分隔", text: binding.aliasesText, axis: .vertical)
-                        TextField("标签，用逗号分隔", text: binding.tagsText, axis: .vertical)
-                        TextField("位置说明", text: binding.locationNote, axis: .vertical)
+                    Section("名称") {
+                        TextField("物品名称（必填）", text: binding.name).focused($focusedField, equals: .name)
+                        if model.validationMessage != nil && binding.name.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("请输入物品名称。") .font(.caption).foregroundStyle(.red)
+                        }
                     }
-                    Section("备忘") {
-                        TextEditor(text: binding.note).frame(minHeight: 110)
-                    }
+                    Section("位置说明") { TextField("例如：上层右侧", text: binding.locationNote, axis: .vertical) }
+                    Section("标签") { TextField("用逗号分隔", text: binding.tagsText, axis: .vertical) }
+                    Section("别名") { TextField("用逗号分隔", text: binding.aliasesText, axis: .vertical) }
+                    Section("备忘") { TextEditor(text: binding.note).frame(minHeight: 110) }
                     Section("物品照片") {
                         if let preview = binding.wrappedValue.appearancePreview {
                             Image(uiImage: preview).resizable().scaledToFit().frame(maxHeight: 220)
@@ -43,9 +46,6 @@ struct ItemDraftSheet: View {
                         Text("可选择照片中的主体，生成去背景的物品卡片。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    if let message = model.validationMessage {
-                        Section { Text(message).foregroundStyle(.red) }
-                    }
                 }
             }
             .navigationTitle("记录物品")
@@ -55,7 +55,12 @@ struct ItemDraftSheet: View {
 					Button("取消") { model.dismissPendingItem(); dismiss() }.disabled(model.isProcessingImage)
 				}
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { if model.commitPendingItem() { dismiss() } }.disabled(isLoadingPhoto)
+                    Button {
+                        if model.commitPendingItem() { dismiss() } else { focusedField = .name }
+                    } label: {
+                        if isLoadingPhoto || model.isProcessingImage { ProgressView().accessibilityLabel("保存中") }
+                        else { Text("保存") }
+                    }.disabled(isLoadingPhoto || model.isProcessingImage)
                 }
             }
         }
