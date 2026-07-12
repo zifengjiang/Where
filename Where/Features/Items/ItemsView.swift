@@ -1,6 +1,21 @@
 import SwiftUI
 import UIKit
 
+enum ItemAppearanceSource: Equatable {
+    case cutout(String)
+    case original(String)
+
+    var path: String {
+        switch self { case .cutout(let path), .original(let path): path }
+    }
+
+    static func resolve(cutout: String?, original: String?) -> ItemAppearanceSource? {
+        if let cutout, !cutout.isEmpty { return .cutout(cutout) }
+        if let original, !original.isEmpty { return .original(original) }
+        return nil
+    }
+}
+
 struct ItemsView: View {
     @Environment(\.displayScale) private var displayScale
     @State private var model: ItemsViewModel
@@ -32,8 +47,11 @@ struct ItemsView: View {
             LazyVStack(spacing: 16) {
                 locationHeader
                 if let item = model.selectedItem,
-                   item.appearanceCutoutImagePath != nil {
-                    AppearanceCard(item: item, imageStore: imageStore)
+                   let source = ItemAppearanceSource.resolve(
+                    cutout: item.appearanceCutoutImagePath,
+                    original: item.appearanceOriginalImagePath
+                   ) {
+                    AppearanceCard(item: item, source: source, imageStore: imageStore)
                         .frame(maxWidth: .infinity)
                         .frame(height: 240)
                         .transition(.opacity)
@@ -141,7 +159,8 @@ private struct ItemRow: View {
         HStack(spacing: 12) {
             AsyncImageFileView(relativePath: item.appearanceCutoutImagePath ?? item.appearanceOriginalImagePath,
                                imageStore: imageStore, maxPixelSize: 160,
-                               accessibilityLabel: "\(item.name)的物品照片") { image in
+                               accessibilityLabel: "\(item.name)的物品照片",
+                               failurePolicy: .compact) { image in
                 Image(uiImage: image).resizable().scaledToFit().padding(4)
             }
             .frame(width: 48, height: 48)
@@ -188,15 +207,44 @@ private struct TagSummary: View {
 
 private struct AppearanceCard: View {
     let item: ItemSummary
+    let source: ItemAppearanceSource
     let imageStore: any SceneImageStoreProtocol
 
     var body: some View {
-        AsyncImageFileView(relativePath: item.appearanceCutoutImagePath,
+        AsyncImageFileView(relativePath: source.path,
                            imageStore: imageStore, maxPixelSize: 1000,
                            accessibilityLabel: "\(item.name)的物品卡片") { image in
-            ItemCardView(item: item, cutoutImage: image,
-                         imageRevision: item.appearanceCutoutImagePath ?? item.id.uuidString)
-                .padding(.horizontal, 16)
+            switch source {
+            case .cutout:
+                ItemCardView(item: item, cutoutImage: image, imageRevision: source.path)
+                    .padding(.horizontal, 16)
+            case .original:
+                OriginalAppearanceCard(item: item, image: image)
+            }
         }
+    }
+}
+
+private struct OriginalAppearanceCard: View {
+    let item: ItemSummary
+    let image: UIImage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: 170)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            if let note = item.note, !note.isEmpty {
+                Text(note).font(.subheadline).lineLimit(2)
+            }
+            Text(ItemCardState.createdAtText(item.createdAt))
+                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.name)。备忘：\(item.note ?? "无")。\(ItemCardState.createdAtText(item.createdAt))")
     }
 }

@@ -1,6 +1,13 @@
 import SwiftUI
 import UIKit
 
+enum AsyncImageFailurePolicy: Equatable {
+    case compact
+    case retryable
+
+    var allowsRetry: Bool { self == .retryable }
+}
+
 struct AsyncImageFileView<Content: View>: View {
     enum FailureStyle { case compact, location }
 
@@ -9,6 +16,7 @@ struct AsyncImageFileView<Content: View>: View {
     let maxPixelSize: Int
     let accessibilityLabel: String
     var failureStyle: FailureStyle = .compact
+    var failurePolicy: AsyncImageFailurePolicy = .retryable
     @ViewBuilder let content: (UIImage) -> Content
 
     @State private var image: UIImage?
@@ -31,7 +39,9 @@ struct AsyncImageFileView<Content: View>: View {
                         Image(systemName: "photo.badge.exclamationmark")
                             .font(failureStyle == .location ? .title : .body)
                         Text("照片不可用").font(.subheadline)
-                        Button("重试") { retryToken += 1 }.font(.caption)
+                        if failurePolicy.allowsRetry {
+                            Button("重试") { retryToken += 1 }.font(.caption)
+                        }
                     }
                     .foregroundStyle(.secondary)
                 }

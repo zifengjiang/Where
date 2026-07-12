@@ -4,6 +4,17 @@ import Testing
 
 @MainActor
 struct ItemsViewModelTests {
+    @Test func appearanceSourcePrefersCutoutAndFallsBackToOriginal() {
+        #expect(ItemAppearanceSource.resolve(cutout: "cutout.png", original: "original.jpg") == .cutout("cutout.png"))
+        #expect(ItemAppearanceSource.resolve(cutout: nil, original: "original.jpg") == .original("original.jpg"))
+        #expect(ItemAppearanceSource.resolve(cutout: nil, original: nil) == nil)
+    }
+
+    @Test func compactImageFailureIsNonInteractiveWhileLocationCanRetry() {
+        #expect(AsyncImageFailurePolicy.compact.allowsRetry == false)
+        #expect(AsyncImageFailurePolicy.retryable.allowsRetry == true)
+    }
+
     @Test func blankQueryLoadsAllWithoutDefaultSelection() async {
         let item = itemFixture(name: "钥匙")
         let repository = ItemsRepositoryFake(events: ["": [.success([item])]])
