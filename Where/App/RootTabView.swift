@@ -46,14 +46,7 @@ struct RootTabView: View {
             }
 
             Tab("所有物品", systemImage: "shippingbox", value: .items) {
-                NavigationStack {
-                    ContentUnavailableView(
-                        "还没有物品",
-                        systemImage: "shippingbox",
-                        description: Text("场景中的物品会显示在这里。")
-                    )
-                    .navigationTitle("所有物品")
-                }
+                ItemsView(repository: dependencies.itemRepository, imageStore: dependencies.imageStore)
             }
         }
         .tabViewBottomAccessory {
