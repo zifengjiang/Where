@@ -24,6 +24,41 @@ import UIKit
     #expect(CapturePresentationPolicy.showsForm(hasSceneImage: true))
 }
 
+@Test @MainActor func cameraOverlayPassesTouchesOutsideAlbumButton() {
+    let overlay = CameraPassthroughOverlayView(frame: CGRect(x: 0, y: 0, width: 300, height: 600))
+    let button = UIButton(frame: CGRect(x: 20, y: 20, width: 120, height: 60))
+    overlay.addSubview(button)
+    #expect(overlay.hitTest(CGPoint(x: 250, y: 300), with: nil) == nil)
+    #expect(overlay.hitTest(CGPoint(x: 40, y: 40), with: nil) === button)
+}
+
+@Test func photoPickerOutcomeDistinguishesCancelSelectionAndFailure() {
+    var state = InitialPhotoPickerState()
+    state.present()
+    #expect(state.dismiss() == .cancelInitialFlow)
+    state.present(); state.selectionStarted(); state.selectionFailed()
+    #expect(state.dismiss() == .keepDraftForRecovery)
+    state.present(); state.selectionStarted(); state.selectionSucceeded()
+    #expect(state.dismiss() == .keepDraftForRecovery)
+}
+
+@Test func permissionReturnRoutesAuthorizedAndDeniedStates() {
+    #expect(CameraPermissionReturn.destination(for: .available) == .camera)
+    #expect(CameraPermissionReturn.destination(for: .denied) == .recovery)
+    #expect(CameraPermissionReturn.destination(for: .unavailable) == .photos)
+}
+
+@Test func permissionReturnLifecycleRechecksOnlyOnceAfterOpeningSettings() {
+    var lifecycle = CameraPermissionReturnLifecycle()
+    let beforeSettings = lifecycle.consumeActiveReturn()
+    #expect(!beforeSettings)
+    lifecycle.didOpenSettings()
+    let firstActive = lifecycle.consumeActiveReturn()
+    let secondActive = lifecycle.consumeActiveReturn()
+    #expect(firstActive)
+    #expect(!secondActive)
+}
+
 @MainActor
 struct SceneCaptureViewModelTests {
     @Test func sceneNameIsRequiredBeforeEditingMarkers() throws {

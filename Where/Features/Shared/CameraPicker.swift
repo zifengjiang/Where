@@ -13,6 +13,13 @@ enum CameraPickerAction {
     var accessibilityLabel: String { "从相册选择" }
 }
 
+final class CameraPassthroughOverlayView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === self ? nil : hit
+    }
+}
+
 struct CameraPicker: UIViewControllerRepresentable {
     let onImage: (UIImage) -> Void
     let onCancel: () -> Void
@@ -34,10 +41,16 @@ struct CameraPicker: UIViewControllerRepresentable {
             libraryButton.configuration = configuration
             libraryButton.accessibilityLabel = CameraPickerAction.library.accessibilityLabel
             libraryButton.addTarget(context.coordinator, action: #selector(Coordinator.chooseLibrary), for: .touchUpInside)
-            libraryButton.frame = CGRect(x: 24, y: 68, width: 104, height: 48)
-            let overlay = UIView(frame: UIScreen.main.bounds)
-            overlay.isUserInteractionEnabled = true
+            libraryButton.titleLabel?.adjustsFontForContentSizeCategory = true
+            libraryButton.translatesAutoresizingMaskIntoConstraints = false
+            let overlay = CameraPassthroughOverlayView(frame: picker.view.bounds)
+            overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             overlay.addSubview(libraryButton)
+            NSLayoutConstraint.activate([
+                libraryButton.leadingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+                libraryButton.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 12),
+                libraryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            ])
             picker.cameraOverlayView = overlay
         }
         return picker

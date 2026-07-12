@@ -16,8 +16,37 @@ enum CaptureInitialSource {
 enum CapturePresentationPolicy {
     static func showsForm(hasSceneImage: Bool) -> Bool { hasSceneImage }
 }
+enum InitialPhotoPickerDismissal: Equatable { case cancelInitialFlow, keepDraftForRecovery }
+struct InitialPhotoPickerState: Equatable {
+    private enum Phase: Equatable { case idle, presented, loading, failed, succeeded }
+    private var phase: Phase = .idle
+    mutating func present() { phase = .presented }
+    mutating func selectionStarted() { phase = .loading }
+    mutating func selectionFailed() { phase = .failed }
+    mutating func selectionSucceeded() { phase = .succeeded }
+    mutating func dismiss() -> InitialPhotoPickerDismissal {
+        if phase == .presented { phase = .idle; return .cancelInitialFlow }
+        return .keepDraftForRecovery
+    }
+}
+enum CameraPermissionReturnDestination: Equatable { case camera, photos, recovery }
+enum CameraPermissionReturn {
+    static func destination(for state: CameraAccessState) -> CameraPermissionReturnDestination {
+        switch state { case .available: .camera; case .unavailable: .photos; case .denied: .recovery }
+    }
+}
+struct CameraPermissionReturnLifecycle: Equatable {
+    private var awaitsReturn = false
+    mutating func didOpenSettings() { awaitsReturn = true }
+    mutating func consumeActiveReturn() -> Bool {
+        guard awaitsReturn else { return false }
+        awaitsReturn = false
+        return true
+    }
+}
 
 struct SceneDraftView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @State private var model: SceneCaptureViewModel
     @State private var photoItem: PhotosPickerItem?
@@ -26,6 +55,9 @@ struct SceneDraftView: View {
     @State private var isShowingCameraAlert = false
     @State private var cameraState: CameraAccessState = .available
     @State private var didPresentInitialSource = false
+    @State private var photoPickerState = InitialPhotoPickerState()
+    @State private var permissionReturnLifecycle = CameraPermissionReturnLifecycle()
+    @State private var opensPhotoLibraryAfterCamera = false
 
     init(repository: any ItemRepositoryProtocol, imageStore: ImageStore) {
         _model = State(initialValue: SceneCaptureViewModel(repository: repository, imageStore: imageStore))
@@ -40,8 +72,7 @@ struct SceneDraftView: View {
                     if CapturePresentationPolicy.showsForm(hasSceneImage: model.sceneImage != nil) {
                         sceneDetails
                     } else {
-                        ProgressView("正在打开照片来源…")
-                            .accessibilityIdentifier("capture-source-loading")
+                        acquisitionPlaceholder
                     }
                 case .markers:
                     MarkerEditorView(model: model) {
@@ -62,12 +93,20 @@ struct SceneDraftView: View {
 		.interactiveDismissDisabled(model.isSaving || model.hasCommittedGraphPendingCompensation)
         .background(WhereTheme.canvas.ignoresSafeArea())
         .task { await presentInitialSourceIfNeeded() }
-        .photosPicker(isPresented: $isShowingPhotoLibrary, selection: $photoItem, matching: .images)
+        .photosPicker(isPresented: $isShowingPhotoLibrary, selection: photoSelection, matching: .images)
         .onChange(of: photoItem) { _, item in load(item) }
         .onChange(of: isShowingPhotoLibrary) { _, isPresented in
             if !isPresented { handlePhotoLibraryDismissal() }
         }
-        .fullScreenCover(isPresented: $isShowingCamera) {
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { recheckPermissionAfterSettings() }
+        }
+        .fullScreenCover(isPresented: $isShowingCamera, onDismiss: {
+            if opensPhotoLibraryAfterCamera {
+                opensPhotoLibraryAfterCamera = false
+                presentPhotoLibrary()
+            }
+        }) {
             CameraPicker { image in
                 isShowingCamera = false
                 load(image)
@@ -75,20 +114,34 @@ struct SceneDraftView: View {
                 isShowingCamera = false
                 if model.sceneImage == nil { cancelInitialAcquisition() }
             } onChooseLibrary: {
+                opensPhotoLibraryAfterCamera = true
                 isShowingCamera = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(250))
-                    isShowingPhotoLibrary = true
-                }
             }
             .ignoresSafeArea()
         }
         .alert("无法使用相机", isPresented: $isShowingCameraAlert) {
-            if cameraState == .denied { Button("打开设置") { SystemSettings.openAppSettings() } }
-            Button("改从相册选择") { isShowingPhotoLibrary = true }
-            Button("取消", role: .cancel) {}
+            if cameraState == .denied { Button("打开设置") { openSettingsForCamera() } }
+            Button("改从相册选择") { presentPhotoLibrary() }
+            Button("取消", role: .cancel) { if model.sceneImage == nil { cancelInitialAcquisition() } }
         } message: {
             Text(cameraState == .unavailable ? "这台设备没有可用的相机。" : "请允许 Where 使用相机。照片只用于记录家中物品，并保存在此设备上。")
+        }
+    }
+
+    @ViewBuilder private var acquisitionPlaceholder: some View {
+        if cameraState == .denied || model.imageErrorMessage != nil {
+            VStack(spacing: 16) {
+                ContentUnavailableView(
+                    model.imageErrorMessage == nil ? "需要相机权限" : "照片读取失败",
+                    systemImage: model.imageErrorMessage == nil ? "camera.badge.ellipsis" : "photo.badge.exclamationmark",
+                    description: Text(model.imageErrorMessage ?? "允许相机权限，或改从相册选择。")
+                )
+                if cameraState == .denied { Button("打开设置") { openSettingsForCamera() }.buttonStyle(.glassProminent) }
+                Button("从相册选择") { presentPhotoLibrary() }.buttonStyle(.glass)
+                Button("取消", role: .cancel) { cancelInitialAcquisition() }
+            }.padding()
+        } else {
+            ProgressView("正在打开照片来源…").accessibilityIdentifier("capture-source-loading")
         }
     }
 
@@ -112,7 +165,7 @@ struct SceneDraftView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(model.sceneImage == nil ? "选择场景照片" : "更换场景照片")
-                Button("从相册选择") { isShowingPhotoLibrary = true }
+                Button("从相册选择") { presentPhotoLibrary() }
                     .buttonStyle(.glass).frame(minHeight: 44)
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -159,7 +212,7 @@ struct SceneDraftView: View {
             cameraState = await CameraPicker.requestAccess()
             switch CaptureInitialSource.destination(for: cameraState) {
             case .camera: isShowingCamera = true
-            case .photos: isShowingPhotoLibrary = true
+            case .photos: presentPhotoLibrary()
             case .permissionRecovery: isShowingCameraAlert = true
             }
         }
@@ -171,17 +224,14 @@ struct SceneDraftView: View {
         cameraState = await CameraPicker.requestAccess()
         switch CaptureInitialSource.destination(for: cameraState) {
         case .camera: isShowingCamera = true
-        case .photos: isShowingPhotoLibrary = true
+        case .photos: presentPhotoLibrary()
         case .permissionRecovery: isShowingCameraAlert = true
         }
     }
 
     private func handlePhotoLibraryDismissal() {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
-            guard model.sceneImage == nil, photoItem == nil, !model.isProcessingImage else { return }
-            await cancelInitialAcquisitionAndWait()
-        }
+        guard photoPickerState.dismiss() == .cancelInitialFlow, model.sceneImage == nil else { return }
+        cancelInitialAcquisition()
     }
 
     private func cancelInitialAcquisition() {
@@ -193,13 +243,46 @@ struct SceneDraftView: View {
         if await model.cancel() { dismiss() }
     }
 
+    private var photoSelection: Binding<PhotosPickerItem?> {
+        Binding(get: { photoItem }, set: { item in
+            photoItem = item
+            if item != nil { photoPickerState.selectionStarted() }
+        })
+    }
+
+    private func presentPhotoLibrary() {
+        photoPickerState.present()
+        isShowingPhotoLibrary = true
+    }
+
+    private func openSettingsForCamera() {
+        permissionReturnLifecycle.didOpenSettings()
+        SystemSettings.openAppSettings()
+    }
+
+    private func recheckPermissionAfterSettings() {
+        guard permissionReturnLifecycle.consumeActiveReturn() else { return }
+        Task {
+            cameraState = await CameraPicker.requestAccess()
+            switch CameraPermissionReturn.destination(for: cameraState) {
+            case .camera: isShowingCamera = true
+            case .photos: presentPhotoLibrary()
+            case .recovery: isShowingCameraAlert = false
+            }
+        }
+    }
+
     private func load(_ item: PhotosPickerItem?) {
         guard let item else { return }
         Task {
             do {
                 guard let data = try await item.loadTransferable(type: Data.self) else { throw ImageStoreError.invalidImage }
                 try await model.setSceneImage(data: data)
-            } catch { model.reportImageError(error) }
+                photoPickerState.selectionSucceeded()
+            } catch {
+                photoPickerState.selectionFailed()
+                model.reportImageError(error)
+            }
             photoItem = nil
         }
     }
