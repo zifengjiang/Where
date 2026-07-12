@@ -24,9 +24,8 @@ final class WhereUITests: XCTestCase {
             add(sourceAttachment)
             cancelChoice.tap()
         }
-        XCTAssertTrue(app.navigationBars["添加场景"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["添加场景照片"].exists)
-        XCTAssertTrue(app.buttons["下一步：标记物品"].exists)
+        XCTAssertTrue(app.navigationBars["场景"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["场景名称"].exists)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Where scene capture"
         attachment.lifetime = .keepAlways

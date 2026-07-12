@@ -19,6 +19,11 @@ import UIKit
     #expect(CameraPickerAction.library.accessibilityLabel == "从相册选择")
 }
 
+@Test func captureFormOnlyAppearsAfterPhotoIsReady() {
+    #expect(!CapturePresentationPolicy.showsForm(hasSceneImage: false))
+    #expect(CapturePresentationPolicy.showsForm(hasSceneImage: true))
+}
+
 @MainActor
 struct SceneCaptureViewModelTests {
     @Test func sceneNameIsRequiredBeforeEditingMarkers() throws {

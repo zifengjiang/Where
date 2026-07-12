@@ -13,6 +13,9 @@ enum CaptureInitialSource {
         switch state { case .available: .camera; case .unavailable: .photos; case .denied: .permissionRecovery }
     }
 }
+enum CapturePresentationPolicy {
+    static func showsForm(hasSceneImage: Bool) -> Bool { hasSceneImage }
+}
 
 struct SceneDraftView: View {
     @Environment(\.dismiss) private var dismiss
@@ -33,7 +36,13 @@ struct SceneDraftView: View {
         NavigationStack {
             Group {
                 switch model.step {
-                case .source, .details: sceneDetails
+                case .source, .details:
+                    if CapturePresentationPolicy.showsForm(hasSceneImage: model.sceneImage != nil) {
+                        sceneDetails
+                    } else {
+                        ProgressView("正在打开照片来源…")
+                            .accessibilityIdentifier("capture-source-loading")
+                    }
                 case .markers:
                     MarkerEditorView(model: model) {
                         Task {
@@ -55,11 +64,17 @@ struct SceneDraftView: View {
         .task { await presentInitialSourceIfNeeded() }
         .photosPicker(isPresented: $isShowingPhotoLibrary, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in load(item) }
+        .onChange(of: isShowingPhotoLibrary) { _, isPresented in
+            if !isPresented { handlePhotoLibraryDismissal() }
+        }
         .fullScreenCover(isPresented: $isShowingCamera) {
             CameraPicker { image in
                 isShowingCamera = false
                 load(image)
-            } onCancel: { isShowingCamera = false } onChooseLibrary: {
+            } onCancel: {
+                isShowingCamera = false
+                if model.sceneImage == nil { cancelInitialAcquisition() }
+            } onChooseLibrary: {
                 isShowingCamera = false
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(250))
@@ -159,6 +174,23 @@ struct SceneDraftView: View {
         case .photos: isShowingPhotoLibrary = true
         case .permissionRecovery: isShowingCameraAlert = true
         }
+    }
+
+    private func handlePhotoLibraryDismissal() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard model.sceneImage == nil, photoItem == nil, !model.isProcessingImage else { return }
+            await cancelInitialAcquisitionAndWait()
+        }
+    }
+
+    private func cancelInitialAcquisition() {
+        Task { await cancelInitialAcquisitionAndWait() }
+    }
+
+    private func cancelInitialAcquisitionAndWait() async {
+        guard model.sceneImage == nil else { return }
+        if await model.cancel() { dismiss() }
     }
 
     private func load(_ item: PhotosPickerItem?) {
