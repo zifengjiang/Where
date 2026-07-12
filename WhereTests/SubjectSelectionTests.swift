@@ -89,6 +89,10 @@ struct SubjectSelectionTests {
         #expect(descriptors.map(\.value) == ["已选择", "未选择"])
     }
 
+    @Test func selectionAnnouncementIsChinese() {
+        #expect(SubjectAccessibility.selectionAnnouncement(label: "主体 2") == "主体 2，已选择")
+    }
+
     @Test @MainActor func segmentationErrorsPassThroughErrorMapping() {
         #expect(SubjectSegmentationService.map(SubjectSegmentationError.noSubjects) == .noSubjects)
     }

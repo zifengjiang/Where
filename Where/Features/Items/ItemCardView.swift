@@ -273,3 +273,31 @@ extension ContentSizeCategory {
         }
     }
 }
+
+#Preview("物品剪影卡片") {
+    ItemCardView(item: ItemCardPreviewFixture.item, cutoutImage: ItemCardPreviewFixture.image,
+                 imageRevision: "preview")
+        .frame(width: 300, height: 300).padding().background(WhereTheme.canvas)
+}
+
+#Preview("物品剪影卡片 深色 AX") {
+    ItemCardView(item: ItemCardPreviewFixture.item, cutoutImage: ItemCardPreviewFixture.image,
+                 imageRevision: "preview-dark")
+        .frame(width: 300, height: 340).padding().background(WhereTheme.canvas)
+        .preferredColorScheme(.dark).environment(\.dynamicTypeSize, .accessibility2)
+}
+
+@MainActor private enum ItemCardPreviewFixture {
+    static let item = ItemSummary(
+        id: UUID(), sceneID: UUID(), sceneName: "玄关", sceneImagePath: "preview.jpg",
+        name: "备用钥匙", locationNote: "上层右侧抽屉", note: "下雨天记得带门禁卡。",
+        normalizedX: 0.65, normalizedY: 0.34, aliases: ["钥匙"], tags: ["常用"],
+        appearanceOriginalImagePath: nil, appearanceCutoutImagePath: nil,
+        createdAt: Date(timeIntervalSince1970: 1_783_785_600), updatedAt: Date(timeIntervalSince1970: 1_783_785_600)
+    )
+    static let image = UIGraphicsImageRenderer(size: CGSize(width: 260, height: 300)).image { context in
+        UIColor.clear.setFill(); context.fill(CGRect(x: 0, y: 0, width: 260, height: 300))
+        UIColor(red: 0.85, green: 0.36, blue: 0.29, alpha: 1).setFill()
+        context.cgContext.fillEllipse(in: CGRect(x: 55, y: 35, width: 150, height: 210))
+    }
+}

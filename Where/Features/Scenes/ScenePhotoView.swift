@@ -100,17 +100,19 @@ struct ScenePhotoView: View {
                             .position(point)
                     }
                     if pin.id == selectedItemID && ScenePinLabelPolicy.showsOverlay(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize) {
-                        let labelSize = CGSize(width: min(220, max(80, proxy.size.width - 16)), height: 58)
                         Text(pin.name)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.center)
-                            .lineLimit(3)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .frame(width: labelSize.width, height: labelSize.height)
+                            .frame(maxWidth: min(220, max(80, proxy.size.width - 16)))
+                            .fixedSize(horizontal: false, vertical: true)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                            .position(ScenePinLabelLayout.center(anchor: point, labelSize: labelSize, viewport: proxy.size))
+                            .position(
+                                x: min(max(point.x, 48), max(48, proxy.size.width - 48)),
+                                y: point.y > proxy.size.height / 2 ? max(32, point.y - 50) : min(proxy.size.height - 32, point.y + 50)
+                            )
                             .accessibilityHidden(true)
                     }
                 }
@@ -175,6 +177,20 @@ struct ScenePhotoView: View {
     )
     .frame(width: 852, height: 393)
     .background(.black)
+}
+
+#Preview("深色定位点") {
+    ScenePhotoView(image: ScenePhotoPreviewFixture.image, pins: ScenePhotoPreviewFixture.pins,
+                   selectedItemID: ScenePhotoPreviewFixture.pins.first?.id,
+                   imageAccessibilityLabel: "房间场景照片")
+        .frame(width: 393, height: 500).preferredColorScheme(.dark)
+}
+
+#Preview("辅助字号定位点") {
+    ScenePhotoView(image: ScenePhotoPreviewFixture.image, pins: ScenePhotoPreviewFixture.pins,
+                   selectedItemID: ScenePhotoPreviewFixture.pins.first?.id,
+                   imageAccessibilityLabel: "房间场景照片")
+        .frame(width: 393, height: 500).environment(\.dynamicTypeSize, .accessibility3)
 }
 
 @MainActor

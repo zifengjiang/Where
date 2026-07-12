@@ -2,6 +2,10 @@ import SwiftUI
 import UIKit
 import VisionKit
 
+enum SubjectAccessibility {
+    static func selectionAnnouncement(label: String) -> String { "\(label)，已选择" }
+}
+
 struct SubjectPickerView: View {
     let sourceImage: UIImage
     var service = SubjectSegmentationService()
@@ -106,7 +110,7 @@ struct SubjectPickerView: View {
         if let announcement {
             UIAccessibility.post(
                 notification: .announcement,
-                argument: String(localized: "\(announcement), selected")
+                argument: SubjectAccessibility.selectionAnnouncement(label: announcement)
             )
         }
     }

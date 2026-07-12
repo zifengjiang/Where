@@ -70,9 +70,14 @@ private struct AddSceneAccessoryButton: View {
         HStack {
             if placement != .inline { Spacer() }
             Button(action: action) {
-                Label("添加场景", systemImage: "plus").labelStyle(.iconOnly)
+                switch AddSceneAccessoryPresentation.forPlacement(placement) {
+                case .iconOnly:
+                    Label("添加场景", systemImage: "plus").labelStyle(.iconOnly)
+                case .labeled:
+                    Label("添加场景", systemImage: "plus")
+                }
             }
-            .frame(width: 44, height: 44)
+            .frame(minWidth: 44, minHeight: 44)
             .buttonStyle(.glassProminent)
             .accessibilityLabel("添加场景")
             .accessibilityIdentifier("add-scene-button")
