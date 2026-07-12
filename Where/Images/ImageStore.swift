@@ -96,6 +96,39 @@ actor ImageStore {
         return drafts.map { "Images/\($0.relativeName)" }
     }
 
+    /// Restores a just-promoted batch to Drafts when its database transaction fails.
+    /// The all-or-nothing move lets the capture flow retain a retryable draft.
+    func restorePromoted(_ drafts: [DraftImage]) async throws {
+        try verifyOwnedStorage()
+        for draft in drafts { try validate(draft) }
+        var restored: [(draft: URL, final: URL)] = []
+        do {
+            for draft in drafts.reversed() {
+                let final = imagesDirectory.appending(path: draft.relativeName)
+                guard fileManager.fileExists(atPath: final.path) else {
+                    throw ImageStoreError.unsafePath(draft.relativeName)
+                }
+                try verifyOwnedStorage()
+                try fileManager.moveItem(at: final, to: draft.url)
+                restored.append((draft.url, final))
+            }
+        } catch {
+            var recoverableFinalPaths: [String] = []
+            for move in restored.reversed() {
+                do {
+                    try verifyOwnedStorage()
+                    try fileManager.moveItem(at: move.draft, to: move.final)
+                } catch {
+                    recoverableFinalPaths.append("Images/\(move.final.lastPathComponent)")
+                }
+            }
+            if !recoverableFinalPaths.isEmpty {
+                throw ImageStoreError.rollbackIncomplete(recoverableFinalPaths: recoverableFinalPaths)
+            }
+            throw error
+        }
+    }
+
     func discard(_ drafts: [DraftImage]) async {
         guard (try? verifyOwnedStorage()) != nil else { return }
         for draft in drafts {

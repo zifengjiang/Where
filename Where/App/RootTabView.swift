@@ -60,7 +60,10 @@ struct RootTabView: View {
             AddSceneAccessoryButton(action: state.presentCapture)
         }
         .fullScreenCover(isPresented: $state.isPresentingCapture) {
-            SceneCapturePlaceholderView()
+            SceneDraftView(
+                repository: dependencies.itemRepository,
+                imageStore: dependencies.imageStore
+            )
         }
     }
 }
@@ -83,25 +86,5 @@ private struct AddSceneAccessoryButton: View {
         .buttonStyle(.glassProminent)
         .accessibilityLabel("添加场景")
         .accessibilityIdentifier("add-scene-button")
-    }
-}
-
-private struct SceneCapturePlaceholderView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(
-                "添加场景",
-                systemImage: "camera",
-                description: Text("场景拍摄将在这里开始。")
-            )
-            .navigationTitle("添加场景")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-            }
-        }
     }
 }
