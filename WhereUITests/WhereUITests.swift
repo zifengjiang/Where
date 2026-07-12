@@ -16,7 +16,7 @@ final class WhereUITests: XCTestCase {
         let addButton = app.buttons["添加场景"]
         XCTAssertTrue(addButton.waitForExistence(timeout: 5))
         addButton.tap()
-        let cancelChoice = app.buttons["取消"]
+        let cancelChoice = app.buttons["取消"].firstMatch
         if cancelChoice.waitForExistence(timeout: 3) {
             let sourceAttachment = XCTAttachment(screenshot: app.screenshot())
             sourceAttachment.name = "Where direct system photo source"

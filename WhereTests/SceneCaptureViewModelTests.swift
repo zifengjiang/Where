@@ -15,6 +15,11 @@ import UIKit
     #expect(CaptureInitialSource.destination(for: .denied) == .permissionRecovery)
 }
 
+@Test func captureLaunchDoesNotWaitForAnOuterSourceLoadingState() {
+	#expect(CaptureLaunchPolicy.opensCameraImmediately)
+	#expect(CaptureLaunchPolicy.presentsPhotoFallbackInsideCamera)
+}
+
 @Test func systemCameraExposesLibraryAction() {
     #expect(CameraPickerAction.library.accessibilityLabel == "从相册选择")
 }

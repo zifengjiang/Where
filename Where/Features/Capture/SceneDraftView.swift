@@ -8,6 +8,10 @@ enum CaptureCanvasPolicy {
 }
 
 enum CaptureInitialDestination: Equatable { case camera, photos, permissionRecovery }
+enum CaptureLaunchPolicy {
+    static let opensCameraImmediately = true
+    static let presentsPhotoFallbackInsideCamera = true
+}
 enum CaptureInitialSource {
     static func destination(for state: CameraAccessState) -> CaptureInitialDestination {
         switch state { case .available: .camera; case .unavailable: .photos; case .denied: .permissionRecovery }
@@ -92,7 +96,7 @@ struct SceneDraftView: View {
         }
 		.interactiveDismissDisabled(model.isSaving || model.hasCommittedGraphPendingCompensation)
         .background(WhereTheme.canvas.ignoresSafeArea())
-        .task { await presentInitialSourceIfNeeded() }
+        .task { presentInitialSourceIfNeeded() }
         .photosPicker(isPresented: $isShowingPhotoLibrary, selection: photoSelection, matching: .images)
         .onChange(of: photoItem) { _, item in load(item) }
         .onChange(of: isShowingPhotoLibrary) { _, isPresented in
@@ -208,25 +212,13 @@ struct SceneDraftView: View {
     }
 
     private func requestCamera() {
-        Task {
-            cameraState = await CameraPicker.requestAccess()
-            switch CaptureInitialSource.destination(for: cameraState) {
-            case .camera: isShowingCamera = true
-            case .photos: presentPhotoLibrary()
-            case .permissionRecovery: isShowingCameraAlert = true
-            }
-        }
+		isShowingCamera = true
     }
 
-    private func presentInitialSourceIfNeeded() async {
+    private func presentInitialSourceIfNeeded() {
         guard !didPresentInitialSource else { return }
         didPresentInitialSource = true
-        cameraState = await CameraPicker.requestAccess()
-        switch CaptureInitialSource.destination(for: cameraState) {
-        case .camera: isShowingCamera = true
-        case .photos: presentPhotoLibrary()
-        case .permissionRecovery: isShowingCameraAlert = true
-        }
+		isShowingCamera = true
     }
 
     private func handlePhotoLibraryDismissal() {

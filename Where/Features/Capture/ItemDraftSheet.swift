@@ -140,10 +140,7 @@ struct ItemDraftSheet: View {
     }
 
 	private func requestCamera() {
-		Task {
-			cameraState = await CameraPicker.requestAccess()
-			if cameraState == .available { isShowingCamera = true } else { isShowingCameraAlert = true }
-		}
+		isShowingCamera = true
 	}
 
     private func saveAppearance(original: UIImage, cutout: CGImage?) {
