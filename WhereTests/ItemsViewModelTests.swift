@@ -15,6 +15,17 @@ struct ItemsViewModelTests {
         #expect(AsyncImageFailurePolicy.retryable.allowsRetry == true)
     }
 
+    @Test func appearanceLoadPlanFallsBackFromCutoutToOriginalAndKeepsTextWithoutFiles() {
+        #expect(ItemAppearanceLoadPlan(cutout: "cutout.png", original: "original.jpg").candidates == [
+            .init(source: .cutout, path: "cutout.png"),
+            .init(source: .original, path: "original.jpg")
+        ])
+        #expect(ItemAppearanceLoadPlan(cutout: "", original: nil).candidates.isEmpty)
+        let item = itemFixture(name: "说明书", scenePath: "scene.jpg", cutoutPath: nil)
+        #expect(ItemAppearanceText(item: item).note == "备用")
+        #expect(!ItemAppearanceText(item: item).createdAt.isEmpty)
+    }
+
     @Test func blankQueryLoadsAllWithoutDefaultSelection() async {
         let item = itemFixture(name: "钥匙")
         let repository = ItemsRepositoryFake(events: ["": [.success([item])]])

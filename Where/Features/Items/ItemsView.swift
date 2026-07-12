@@ -16,6 +16,31 @@ enum ItemAppearanceSource: Equatable {
     }
 }
 
+struct ItemAppearanceLoadPlan: Equatable {
+    struct Candidate: Equatable {
+        enum Source: Equatable { case cutout, original }
+        let source: Source
+        let path: String
+    }
+    let candidates: [Candidate]
+
+    init(cutout: String?, original: String?) {
+        var values: [Candidate] = []
+        if let cutout, !cutout.isEmpty { values.append(.init(source: .cutout, path: cutout)) }
+        if let original, !original.isEmpty { values.append(.init(source: .original, path: original)) }
+        candidates = values
+    }
+}
+
+struct ItemAppearanceText: Equatable {
+    let note: String
+    let createdAt: String
+    init(item: ItemSummary) {
+        note = item.note ?? ""
+        createdAt = ItemCardState.createdAtText(item.createdAt)
+    }
+}
+
 struct ItemsView: View {
     @Environment(\.displayScale) private var displayScale
     @State private var model: ItemsViewModel
@@ -46,14 +71,12 @@ struct ItemsView: View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 locationHeader
-                if let item = model.selectedItem,
-                   let source = ItemAppearanceSource.resolve(
-                    cutout: item.appearanceCutoutImagePath,
-                    original: item.appearanceOriginalImagePath
-                   ) {
-                    AppearanceCard(item: item, source: source, imageStore: imageStore)
+                if let item = model.selectedItem {
+                    let plan = ItemAppearanceLoadPlan(cutout: item.appearanceCutoutImagePath,
+                                                      original: item.appearanceOriginalImagePath)
+                    AppearanceCard(item: item, imageStore: imageStore)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 240)
+                        .frame(height: plan.candidates.isEmpty ? 92 : 240)
                         .transition(.opacity)
                 }
                 if model.state == .loading {
@@ -207,44 +230,78 @@ private struct TagSummary: View {
 
 private struct AppearanceCard: View {
     let item: ItemSummary
-    let source: ItemAppearanceSource
     let imageStore: any SceneImageStoreProtocol
+    @State private var loadedImage: UIImage?
+    @State private var loadedSource: ItemAppearanceLoadPlan.Candidate.Source?
+    @State private var imageRevision = ""
+    @State private var isLoading = true
+    @State private var retryToken = 0
 
-    var body: some View {
-        AsyncImageFileView(relativePath: source.path,
-                           imageStore: imageStore, maxPixelSize: 1000,
-                           accessibilityLabel: "\(item.name)的物品卡片") { image in
-            switch source {
-            case .cutout:
-                ItemCardView(item: item, cutoutImage: image, imageRevision: source.path)
-                    .padding(.horizontal, 16)
-            case .original:
-                OriginalAppearanceCard(item: item, image: image)
-            }
-        }
+    private var plan: ItemAppearanceLoadPlan {
+        ItemAppearanceLoadPlan(cutout: item.appearanceCutoutImagePath,
+                               original: item.appearanceOriginalImagePath)
     }
-}
-
-private struct OriginalAppearanceCard: View {
-    let item: ItemSummary
-    let image: UIImage
+    private var text: ItemAppearanceText { ItemAppearanceText(item: item) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: 170)
+            if !plan.candidates.isEmpty {
+                Group {
+                    if let loadedImage, let loadedSource {
+                        switch loadedSource {
+                        case .cutout:
+                            ItemCardView(item: item, cutoutImage: loadedImage, imageRevision: imageRevision)
+                                .padding(.horizontal, 16)
+                        case .original:
+                            Image(uiImage: loadedImage).resizable().scaledToFit()
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                    } else if isLoading {
+                        ZStack { Color.orange.opacity(0.08); ProgressView("正在载入物品照片…") }
+                    } else {
+                        ZStack {
+                            Color.orange.opacity(0.08)
+                            VStack(spacing: 6) {
+                                Image(systemName: "photo.badge.exclamationmark")
+                                Text("物品照片不可用").font(.subheadline)
+                                Button("重试") { retryToken += 1 }.font(.caption)
+                            }.foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
-            if let note = item.note, !note.isEmpty {
-                Text(note).font(.subheadline).lineLimit(2)
             }
-            Text(ItemCardState.createdAtText(item.createdAt))
-                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+
+            if !text.note.isEmpty { Text(text.note).font(.subheadline).lineLimit(2) }
+            Text(text.createdAt).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
         .padding(12)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name)。备忘：\(item.note ?? "无")。\(ItemCardState.createdAtText(item.createdAt))")
+        .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 20))
+        .task(id: AppearanceLoadIdentity(plan: plan, retryToken: retryToken)) { await loadAppearance() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(item.name)。备忘：\(text.note.isEmpty ? "无" : text.note)。\(text.createdAt)")
+    }
+
+    private func loadAppearance() async {
+        loadedImage = nil; loadedSource = nil; isLoading = !plan.candidates.isEmpty
+        for candidate in plan.candidates {
+            guard !Task.isCancelled else { return }
+            guard let asset = await imageStore.loadImageAsset(relativePath: candidate.path),
+                  let thumbnail = await SceneThumbnailCache.shared.thumbnail(
+                    path: candidate.path, asset: asset, maxPixelSize: 1000
+                  ), !Task.isCancelled else { continue }
+            loadedImage = thumbnail.image
+            loadedSource = candidate.source
+            imageRevision = "\(candidate.path)-\(asset.revision)"
+            isLoading = false
+            return
+        }
+        if !Task.isCancelled { isLoading = false }
+    }
+
+    private struct AppearanceLoadIdentity: Equatable {
+        let plan: ItemAppearanceLoadPlan
+        let retryToken: Int
     }
 }
