@@ -5,14 +5,23 @@ import UIKit
 
 @MainActor
 struct ScenesViewModelTests {
-    @Test func thumbnailCacheHitsAndEvictsByStableRevision() async {
+    @Test func thumbnailCacheHitsBySizeAndMissesForDifferentSize() async {
         let counter = DecodeCounter()
-        let cache = SceneThumbnailCache(capacity: 1) { _ in counter.count += 1; return SceneThumbnail(image: UIImage()) }
+        let cache = SceneThumbnailCache(maximumCost: 10_000) { _, _ in counter.count += 1; return SceneThumbnail(image: UIImage(), decodedByteCost: 1) }
         let asset = SceneImageAsset(data: Data([1]), revision: 1)
-        _ = await cache.thumbnail(path: "a", asset: asset)
-        _ = await cache.thumbnail(path: "a", asset: asset)
-        _ = await cache.thumbnail(path: "b", asset: asset)
-        _ = await cache.thumbnail(path: "a", asset: asset)
+        _ = await cache.thumbnail(path: "a", asset: asset, maxPixelSize: 100)
+        _ = await cache.thumbnail(path: "a", asset: asset, maxPixelSize: 100)
+        _ = await cache.thumbnail(path: "a", asset: asset, maxPixelSize: 200)
+        #expect(counter.count == 2)
+    }
+
+    @Test func thumbnailCacheEvictsByDecodedByteCost() async {
+        let counter = DecodeCounter()
+        let cache = SceneThumbnailCache(maximumCost: 10) { _, _ in counter.count += 1; return SceneThumbnail(image: UIImage(), decodedByteCost: 6) }
+        let asset = SceneImageAsset(data: Data([1]), revision: 1)
+        _ = await cache.thumbnail(path: "a", asset: asset, maxPixelSize: 100)
+        _ = await cache.thumbnail(path: "b", asset: asset, maxPixelSize: 100)
+        _ = await cache.thumbnail(path: "a", asset: asset, maxPixelSize: 100)
         #expect(counter.count == 3)
     }
     @Test func observationTaskDoesNotRetainModel() async {
@@ -119,6 +128,20 @@ struct ScenesViewModelTests {
         #expect(model.cleanupWarning == nil)
     }
 
+    @Test func enqueueFailureRetriesPathsWithoutRepeatingDatabaseDelete() async {
+        let repository = FakeSceneRepository(events: [])
+        let images = FakeSceneImageStore(enqueueError: TestError.failed)
+        let model = ScenesViewModel(repository: repository, imageStore: images)
+        model.requestDelete(fixtureScene())
+        await model.confirmDelete()
+        #expect(repository.deleteCount == 1)
+        images.enqueueError = nil
+        await model.retryCleanup()
+        #expect(repository.deleteCount == 1)
+        #expect(images.enqueueCount == 2)
+        #expect(model.cleanupWarning == nil)
+    }
+
     @Test func detailLoadsScenePinsAndTracksIntents() async {
         let scene = fixtureScene()
         let item = fixtureItem(scene: scene)
@@ -152,6 +175,18 @@ struct ScenesViewModelTests {
         #expect(await model.retryDeleteCleanup() == true)
         #expect(repository.deleteCount == 1)
         #expect(images.deleteCount == 2)
+    }
+
+    @Test func detailEnqueueFailureRetriesWithoutRepeatingDatabaseDelete() async {
+        let scene = fixtureScene()
+        let repository = FakeSceneRepository(events: [], detail: SceneDetail(scene: scene, items: []))
+        let images = FakeSceneImageStore(enqueueError: TestError.failed)
+        let model = SceneDetailViewModel(sceneID: scene.id, repository: repository, imageStore: images)
+        #expect(await model.deleteScene() == .cleanupPending)
+        images.enqueueError = nil
+        #expect(await model.retryDeleteCleanup())
+        #expect(repository.deleteCount == 1)
+        #expect(images.enqueueCount == 2)
     }
 }
 
@@ -191,11 +226,11 @@ private final class FakeSceneRepository: SceneRepositoryProtocol, @unchecked Sen
 }
 
 private final class FakeSceneImageStore: SceneImageStoreProtocol, @unchecked Sendable {
-    var error: Error?; var deleteCount = 0; let log: EventLog?; var pendingPaths: [String] = []
-    init(error: Error? = nil, log: EventLog? = nil) { self.error = error; self.log = log }
+    var error: Error?; var enqueueError: Error?; var deleteCount = 0; var enqueueCount = 0; let log: EventLog?; var pendingPaths: [String] = []
+    init(error: Error? = nil, enqueueError: Error? = nil, log: EventLog? = nil) { self.error = error; self.enqueueError = enqueueError; self.log = log }
     func loadImage(relativePath: String) async -> Data? { nil }
     func delete(relativePaths: [String]) async throws { deleteCount += 1; log?.values.append("images"); if let error { throw error } }
-    func enqueueCleanup(relativePaths: [String]) async throws { pendingPaths.append(contentsOf: relativePaths) }
+    func enqueueCleanup(relativePaths: [String]) async throws { enqueueCount += 1; if let enqueueError { throw enqueueError }; pendingPaths.append(contentsOf: relativePaths) }
     func hasPendingCleanup() async -> Bool { !pendingPaths.isEmpty }
     func retryPendingCleanup() async throws { try await delete(relativePaths: pendingPaths); pendingPaths = [] }
 }

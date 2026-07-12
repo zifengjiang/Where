@@ -201,6 +201,13 @@ struct ImageStoreTests {
         #expect(!FileManager.default.fileExists(atPath: root.appending(path: path).path))
         #expect(await reopened.hasPendingCleanup() == false)
     }
+
+    @Test func thumbnailDownsamplesLargeSourceToRequestedPixelBound() async throws {
+        let cache = SceneThumbnailCache(maximumCost: 32 * 1_024 * 1_024)
+        let asset = SceneImageAsset(data: try jpeg(width: 3072, height: 1800), revision: 1)
+        let thumbnail = try #require(await cache.thumbnail(path: "large", asset: asset, maxPixelSize: 320))
+        #expect(max(thumbnail.image.cgImage?.width ?? 0, thumbnail.image.cgImage?.height ?? 0) <= 320)
+    }
 }
 
 private func makeStore() throws -> (ImageStore, URL) {

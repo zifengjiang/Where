@@ -121,24 +121,44 @@ actor ImageStore {
 
     func loadImageAsset(relativePath: String) async -> SceneImageAsset? {
         guard (try? verifyOwnedStorage()) != nil,
-              let url = try? finalURL(relativePath),
-              isRegularFileWithoutSymlink(at: url),
-              url.resolvingSymlinksInPath().standardizedFileURL == url.standardizedFileURL,
-              url.standardizedFileURL.deletingLastPathComponent() == imagesDirectory.standardizedFileURL,
-              (try? verifyOwnedStorage()) != nil,
-              isRegularFileWithoutSymlink(at: url),
-              let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber,
-              let modified = attributes[.modificationDate] as? Date,
-              let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
-        let revision = UInt64(modified.timeIntervalSince1970 * 1_000_000) ^ size.uint64Value
-        return SceneImageAsset(data: data, revision: revision)
+              let name = try? finalFilename(relativePath),
+              let asset = try? readImageAsset(filename: name) else { return nil }
+        return asset
     }
 
-    private func isRegularFileWithoutSymlink(at url: URL) -> Bool {
+    private func readImageAsset(filename: String) throws -> SceneImageAsset {
+        let directoryFD = imagesDirectory.path.withCString { open($0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }
+        guard directoryFD >= 0 else { throw ImageStoreError.unsafeStorage(imagesDirectory.path) }
+        defer { close(directoryFD) }
+
+        let fileFD = filename.withCString { openat(directoryFD, $0, O_RDONLY | O_NOFOLLOW | O_CLOEXEC) }
+        guard fileFD >= 0 else { throw ImageStoreError.unsafePath(filename) }
+        defer { close(fileFD) }
+
         var information = stat()
-        guard url.path.withCString({ lstat($0, &information) }) == 0 else { return false }
-        return information.st_mode & S_IFMT == S_IFREG
+        guard fstat(fileFD, &information) == 0,
+              information.st_mode & S_IFMT == S_IFREG,
+              information.st_size >= 0,
+              information.st_size <= Int64(Int.max) else { throw ImageStoreError.unsafePath(filename) }
+
+        var data = Data(count: Int(information.st_size))
+        var offset = 0
+        while offset < data.count {
+            let remaining = data.count - offset
+            let count = data.withUnsafeMutableBytes { bytes in
+                read(fileFD, bytes.baseAddress!.advanced(by: offset), remaining)
+            }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw ImageStoreError.unsafePath(filename)
+            }
+            guard count > 0 else { throw ImageStoreError.unsafePath(filename) }
+            offset += count
+        }
+        let revision = UInt64(bitPattern: Int64(information.st_mtimespec.tv_sec))
+            ^ UInt64(bitPattern: Int64(information.st_mtimespec.tv_nsec))
+            ^ UInt64(information.st_size)
+        return SceneImageAsset(data: data, revision: revision)
     }
 
     func cleanOrphans(referencedPaths: Set<String>, olderThan: Date) async throws {
@@ -221,14 +241,17 @@ actor ImageStore {
     }
 
     private func finalURL(_ relativePath: String) throws -> URL {
+        let filename = try finalFilename(relativePath)
+        return imagesDirectory.appending(path: filename)
+    }
+
+    private func finalFilename(_ relativePath: String) throws -> String {
         guard !relativePath.hasPrefix("/"), !relativePath.contains("\\") else { throw ImageStoreError.unsafePath(relativePath) }
         let parts = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard parts.count == 2, parts[0] == "Images", !parts[1].isEmpty, parts[1] != ".", parts[1] != ".." else {
             throw ImageStoreError.unsafePath(relativePath)
         }
-        let url = rootDirectory.appending(path: relativePath).standardizedFileURL
-        guard url.deletingLastPathComponent() == imagesDirectory.standardizedFileURL else { throw ImageStoreError.unsafePath(relativePath) }
-        return url
+        return String(parts[1])
     }
 
     private func removeStaleFiles(in directory: URL, olderThan: Date, preserving: (URL) -> Bool) throws {

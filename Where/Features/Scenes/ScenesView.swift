@@ -55,6 +55,6 @@ private struct SceneCard: View {
         Text("\(scene.itemCount) 件物品").font(.subheadline).foregroundStyle(.secondary)
     }.task(id: scene.imagePath) {
         guard let asset = await imageStore.loadImageAsset(relativePath: scene.imagePath) else { return }
-        image = await SceneThumbnailCache.shared.thumbnail(path: scene.imagePath, asset: asset)?.image
+        image = await SceneThumbnailCache.shared.thumbnail(path: scene.imagePath, asset: asset, maxPixelSize: Int(320 * UIScreen.main.scale))?.image
     } }
 }
